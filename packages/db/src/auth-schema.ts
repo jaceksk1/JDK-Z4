@@ -8,6 +8,14 @@ export const user = pgTable("user", (t) => ({
   image: t.text(),
   createdAt: t.timestamp().notNull(),
   updatedAt: t.timestamp().notNull(),
+  // username plugin
+  username: t.text().unique(),
+  displayUsername: t.text(),
+  // admin plugin
+  role: t.text().default("worker"),
+  banned: t.boolean(),
+  banReason: t.text(),
+  banExpires: t.timestamp(),
 }));
 
 export const session = pgTable("session", (t) => ({
@@ -22,6 +30,8 @@ export const session = pgTable("session", (t) => ({
     .text()
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // admin plugin
+  impersonatedBy: t.text(),
 }));
 
 export const account = pgTable("account", (t) => ({

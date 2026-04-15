@@ -34,7 +34,15 @@
     },
     "push": {
       "cache": false,
-      "interactive": true
+      "interactive": false
+    },
+    "seed": {
+      "cache": false,
+      "interactive": false
+    },
+    "seed-admin": {
+      "cache": false,
+      "interactive": false
     },
     "studio": {
       "cache": false,
