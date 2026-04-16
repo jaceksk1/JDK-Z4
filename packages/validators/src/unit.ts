@@ -15,6 +15,18 @@ export const unitTypeSchema = z.enum([
   "storage",
 ]);
 
+/** Grupowanie statystyk: building | section | floor */
+export const statsLevelSchema = z.enum(["building", "section", "floor"]);
+
+export const unitStatsInputSchema = z.object({
+  projectCode: z.string().min(1).max(10).default("Z4"),
+  level: statsLevelSchema,
+  /** Wymagany gdy level = section lub floor */
+  buildingName: z.string().min(1).max(4).optional(),
+  /** Wymagany gdy level = floor */
+  sectionName: z.string().min(1).max(4).optional(),
+});
+
 export const unitListInputSchema = z.object({
   projectCode: z.string().min(1).max(10).default("Z4"),
   /** Budynek: "A" | "B" */
@@ -25,6 +37,8 @@ export const unitListInputSchema = z.object({
   status: unitStatusSchema.optional(),
   /** Piętro: "G01" | "P00"–"P07" */
   floor: z.string().min(1).max(4).optional(),
+  /** Czy uwzględniać jednostki bez budynku (MP, KL) */
+  includeGarage: z.boolean().default(false),
 });
 
 export const unitGetByIdInputSchema = z.object({
@@ -40,3 +54,4 @@ export type UnitStatus = z.infer<typeof unitStatusSchema>;
 export type UnitType = z.infer<typeof unitTypeSchema>;
 export type UnitListInput = z.infer<typeof unitListInputSchema>;
 export type UnitUpdateStatusInput = z.infer<typeof unitUpdateStatusInputSchema>;
+export type StatsLevel = z.infer<typeof statsLevelSchema>;

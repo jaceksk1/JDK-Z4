@@ -42,23 +42,30 @@ interface LuRecord {
 
 // ─── Parser discover_output.txt ───────────────────────────────────────────────
 
+/**
+ * LU z kart katalogowych (analiza_projektu.md):
+ *   A1.U.1–A1.U.7, A2.U.8–A2.U.15, B1.U.16–B1.U.22, B2.U.23–B2.U.27
+ * DWG zawiera B2.U.28, B2.U.29 ale BEZ kart katalogowych — ignorujemy.
+ */
+const VALID_LU_NUMBERS: Record<string, number[]> = {
+  A1: [1, 2, 3, 4, 5, 6, 7],
+  A2: [8, 9, 10, 11, 12, 13, 14, 15],
+  B1: [16, 17, 18, 19, 20, 21, 22],
+  B2: [23, 24, 25, 26, 27],
+};
+
 function parseDiscoverOutput(filePath: string): {
   apartments: ApartmentRecord[];
   lu: LuRecord[];
 } {
   const content = readFileSync(filePath, "utf-8");
 
-  // Mieszkania — dwa formaty w DWG:
-  //   Format A: "A1.2.5-QF1"  → section=A1, floor=2, unit=5
-  //   Format B: "B1.7.224.5"  → section=B1, floor=7, unit=224, circuit=5
+  // MIESZKANIA — źródło prawdy: prefiks "TM" przed designatorem.
+  //   Przykład: "TM A1.3.24" → mieszkanie na P03 klatki A1
+  // Wersje bez prefiksu (np. "A1.2.24-QF1") często zawierają błędy nazewnictwa
+  // (projektant pomylił piętro w niektórych rysunkach).
   const apartmentSet = new Set<string>();
-
-  // Format A: [AB][12].[floor].[unit]-QF[n]
-  for (const match of content.matchAll(/([AB][12]\.\d+\.\d+)-QF\d+/g)) {
-    apartmentSet.add(match[1]!);
-  }
-  // Format B: [AB][12].[floor].[unit].[circuit] — tylko jeśli wszystkie części numeryczne
-  for (const match of content.matchAll(/([AB][12]\.\d+\.\d+)\.\d+(?!\d)/g)) {
+  for (const match of content.matchAll(/TM ([AB][12]\.\d+\.\d+)\b/g)) {
     apartmentSet.add(match[1]!);
   }
 
@@ -77,17 +84,15 @@ function parseDiscoverOutput(filePath: string): {
     });
   }
 
-  // LU — format: "A1.U.1.2" → strip ostatnią część → "A1.U.1"
-  const luSet = new Set<string>();
-  for (const match of content.matchAll(/([AB][12]\.U\.\d+)\.\d+(?!\d)/g)) {
-    luSet.add(match[1]!);
-  }
-
+  // LU — tylko te które mają karty katalogowe (wg analiza_projektu.md)
   const lu: LuRecord[] = [];
-  for (const designator of luSet) {
-    const sectionName = designator.split(".")[0];
-    if (!sectionName) continue;
-    lu.push({ designator, sectionName });
+  for (const [sectionName, numbers] of Object.entries(VALID_LU_NUMBERS)) {
+    for (const n of numbers) {
+      lu.push({
+        designator: `${sectionName}.U.${n}`,
+        sectionName,
+      });
+    }
   }
 
   return { apartments, lu };
