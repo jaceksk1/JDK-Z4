@@ -43,6 +43,7 @@ export const taskListInputSchema = z.object({
 export const taskSubmitInputSchema = z.object({
   taskId: z.string().uuid(),
   completionNote: z.string().min(2).max(2000),
+  completionPhotoPath: z.string().max(500).optional(),
 });
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;

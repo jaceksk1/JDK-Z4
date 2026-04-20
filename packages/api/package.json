@@ -6,6 +6,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./lib/synology": {
+      "types": "./src/lib/synology.ts",
+      "default": "./src/lib/synology.ts"
     }
   },
   "license": "MIT",

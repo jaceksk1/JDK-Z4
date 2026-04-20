@@ -32,6 +32,7 @@ export const tasks = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     completionNote: t.text(),
+    completionPhotoPath: t.text(),
     submittedAt: t.timestamp({ mode: "date", withTimezone: true }),
     dueDate: t.timestamp({ mode: "date", withTimezone: true }),
     createdAt: t

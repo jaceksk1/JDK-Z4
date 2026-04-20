@@ -126,6 +126,7 @@ export const taskRouter = {
         .set({
           status: "submitted",
           completionNote: input.completionNote,
+          completionPhotoPath: input.completionPhotoPath ?? null,
           submittedAt: new Date(),
         })
         .where(eq(tasks.id, input.taskId))
@@ -217,6 +218,7 @@ export const taskRouter = {
           description: tasks.description,
           status: tasks.status,
           completionNote: tasks.completionNote,
+          completionPhotoPath: tasks.completionPhotoPath,
           submittedAt: tasks.submittedAt,
           dueDate: tasks.dueDate,
           createdAt: tasks.createdAt,

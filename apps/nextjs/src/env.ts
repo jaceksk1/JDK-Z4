@@ -17,6 +17,10 @@ export const env = createEnv({
    */
   server: {
     POSTGRES_URL: z.url(),
+    SYNOLOGY_URL: z.string().optional(),
+    SYNOLOGY_USER: z.string().optional(),
+    SYNOLOGY_PASS: z.string().optional(),
+    SYNOLOGY_BASE_PATH: z.string().optional(),
   },
 
   /**

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
+  Camera,
   CheckCircle2,
   Circle,
   Clock,
   ClipboardCheck,
+  ImageIcon,
   Loader2,
   MapPin,
   RotateCcw,
@@ -40,6 +42,10 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
   const { data: session } = useSession();
 
   const [completionNote, setCompletionNote] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: task, isLoading } = useQuery({
     ...trpc.task.getById.queryOptions({ id: taskId ?? "" }),
@@ -54,6 +60,8 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
           queryKey: trpc.task.pathKey(),
         });
         setCompletionNote("");
+        setPhotoFile(null);
+        setPhotoPreview(null);
       },
       onError: (err) => {
         toast.error("Nie udało się zgłosić", { description: err.message });
@@ -99,6 +107,72 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
   const canSubmit = task?.status === "open" && (isAssignedWorker || isManager);
   const isOverdue =
     task?.status === "open" && task?.dueDate && new Date(task.dueDate) < new Date();
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Wybierz plik graficzny (JPEG, PNG, WebP)");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Zdjęcie za duże. Maksymalnie 10MB");
+      return;
+    }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSubmit = async () => {
+    if (!task || completionNote.trim().length < 2) return;
+    setIsUploading(true);
+
+    try {
+      let photoPath: string | undefined;
+
+      // Upload photo first if selected
+      if (photoFile) {
+        const userName = session?.user?.name?.replace(/\s+/g, "-").toLowerCase() ?? "user";
+        const taskSlug = task.title
+          .toLowerCase()
+          .replace(/[ąćęłńóśźż]/g, (c) =>
+            ({ ą: "a", ć: "c", ę: "e", ł: "l", ń: "n", ó: "o", ś: "s", ź: "z", ż: "z" }[c] ?? c)
+          )
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 30);
+        const formData = new FormData();
+        formData.append("file", photoFile);
+        formData.append("folder", `zadania/${userName}_${taskSlug}`);
+
+        const uploadRes = await fetch("/api/files", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(err.error ?? "Upload failed");
+        }
+
+        const uploadData = await uploadRes.json();
+        photoPath = uploadData.path;
+      }
+
+      // Submit task completion
+      submitMutation.mutate({
+        taskId: task.id,
+        completionNote: completionNote.trim(),
+        completionPhotoPath: photoPath,
+      });
+    } catch (e: any) {
+      toast.error("Błąd uploadu zdjęcia", { description: e.message });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const isPending = isUploading || submitMutation.isPending;
 
   return (
     <>
@@ -222,6 +296,17 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">
                     {task.completionNote}
                   </p>
+                  {task.completionPhotoPath && (
+                    <div className="mt-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/files?path=${encodeURIComponent(task.completionPhotoPath)}`}
+                        alt="Zdjęcie wykonania"
+                        className="w-full rounded-sm border object-cover max-h-64"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
                   {task.submittedAt && (
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       Zgłoszono:{" "}
@@ -250,30 +335,62 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                     placeholder="Opisz co zostało zrobione..."
                     className="w-full resize-none rounded-sm border bg-background p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
+
+                  {/* Photo upload */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="environment"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                  />
+
+                  {photoPreview ? (
+                    <div className="mt-2 relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photoPreview}
+                        alt="Podgląd zdjęcia"
+                        className="w-full rounded-sm border object-cover max-h-40"
+                      />
+                      <button
+                        onClick={() => {
+                          setPhotoFile(null);
+                          setPhotoPreview(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="absolute top-2 right-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-2 flex items-center gap-2 rounded-sm border border-dashed px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors w-full justify-center"
+                    >
+                      <Camera className="h-4 w-4" />
+                      Dodaj zdjęcie
+                    </button>
+                  )}
+
                   <button
-                    disabled={
-                      completionNote.trim().length < 2 ||
-                      submitMutation.isPending
-                    }
-                    onClick={() =>
-                      submitMutation.mutate({
-                        taskId: task.id,
-                        completionNote: completionNote.trim(),
-                      })
-                    }
+                    disabled={completionNote.trim().length < 2 || isPending}
+                    onClick={handleSubmit}
                     className={cn(
-                      "mt-2 flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-all",
-                      completionNote.trim().length >= 2
+                      "mt-3 flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-all",
+                      completionNote.trim().length >= 2 && !isPending
                         ? "bg-[var(--status-in-progress)] text-white hover:opacity-90"
                         : "bg-muted text-muted-foreground cursor-not-allowed",
                     )}
                   >
-                    {submitMutation.isPending ? (
+                    {isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Send className="h-4 w-4" />
                     )}
-                    Zgłoś wykonanie
+                    {isUploading ? "Wysyłanie zdjęcia..." : "Zgłoś wykonanie"}
                   </button>
                 </section>
               )}
@@ -281,7 +398,6 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
               {/* Akcje managera */}
               {isManager && (
                 <section className="border-t pt-4 space-y-3">
-                  {/* Submitted → Done (Odbierz) */}
                   {task.status === "submitted" && (
                     <button
                       disabled={statusMutation.isPending}
@@ -302,7 +418,6 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                     </button>
                   )}
 
-                  {/* Submitted → Open (Cofnij) */}
                   {task.status === "submitted" && (
                     <button
                       disabled={statusMutation.isPending}
@@ -319,7 +434,6 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                     </button>
                   )}
 
-                  {/* Open → Done (bezpośrednie zamknięcie) */}
                   {task.status === "open" && (
                     <button
                       disabled={statusMutation.isPending}
@@ -340,7 +454,6 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                     </button>
                   )}
 
-                  {/* Done → Open (Otwórz ponownie) */}
                   {task.status === "done" && (
                     <button
                       disabled={statusMutation.isPending}
@@ -357,7 +470,6 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                     </button>
                   )}
 
-                  {/* Delete */}
                   <button
                     disabled={deleteMutation.isPending}
                     onClick={() => {
