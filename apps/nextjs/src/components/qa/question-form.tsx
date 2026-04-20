@@ -11,33 +11,35 @@ import { useTRPC } from "~/trpc/react";
 
 interface QuestionFormProps {
   onSuccess: () => void;
+  defaultUnitId?: string | null;
+  defaultContent?: string | null;
 }
 
-export function QuestionForm({ onSuccess }: QuestionFormProps) {
+export function QuestionForm({ onSuccess, defaultUnitId, defaultContent }: QuestionFormProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const [content, setContent] = useState("");
-  const [unitId, setUnitId] = useState<string | null>(null);
+  const [content, setContent] = useState(defaultContent ?? "");
+  const [unitId, setUnitId] = useState<string | null>(defaultUnitId ?? null);
   const [unitSearch, setUnitSearch] = useState("");
   const [showUnitPicker, setShowUnitPicker] = useState(false);
 
-  const { data: units } = useQuery({
+  const { data: allUnits } = useQuery({
     ...trpc.unit.list.queryOptions({ projectCode: "Z4" }),
-    select: (data) =>
-      data
-        .filter((u) => {
-          const q = unitSearch.toLowerCase();
-          return (
-            u.displayDesignator.toLowerCase().includes(q) ||
-            u.designator.toLowerCase().includes(q)
-          );
-        })
-        .slice(0, 10),
-    enabled: showUnitPicker,
+    enabled: showUnitPicker || !!defaultUnitId,
   });
 
-  const selectedUnit = units?.find((u) => u.id === unitId);
+  const selectedUnit = allUnits?.find((u) => u.id === unitId);
+
+  const units = allUnits
+    ?.filter((u) => {
+      const q = unitSearch.toLowerCase();
+      return (
+        u.displayDesignator.toLowerCase().includes(q) ||
+        u.designator.toLowerCase().includes(q)
+      );
+    })
+    .slice(0, 10);
 
   const createQuestion = useMutation(
     trpc.question.create.mutationOptions({

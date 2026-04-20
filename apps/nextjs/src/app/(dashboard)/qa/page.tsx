@@ -21,7 +21,11 @@ export default function QaPage() {
   const searchQuery = searchParams.get("search") ?? "";
   const questionId = searchParams.get("question");
 
-  const [showForm, setShowForm] = useState(false);
+  // Pre-fill from stage issue redirect
+  const prefillUnitId = searchParams.get("unitId");
+  const prefillContent = searchParams.get("prefill");
+
+  const [showForm, setShowForm] = useState(!!prefillUnitId);
 
   const { data, isLoading } = useQuery(
     trpc.question.list.queryOptions({
@@ -102,7 +106,15 @@ export default function QaPage() {
       {/* Form */}
       {showForm && (
         <div className="mb-6 max-w-lg">
-          <QuestionForm onSuccess={() => setShowForm(false)} />
+          <QuestionForm
+            onSuccess={() => {
+              setShowForm(false);
+              // Clear prefill params from URL
+              if (prefillUnitId) router.push("/qa");
+            }}
+            defaultUnitId={prefillUnitId}
+            defaultContent={prefillContent}
+          />
         </div>
       )}
 

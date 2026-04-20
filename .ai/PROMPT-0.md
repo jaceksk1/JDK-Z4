@@ -111,9 +111,11 @@ JDK Z4/
 
 - [x] **Krok 6 M03 Zadania** — schema tasks (open/submitted/done), tRPC router (create, submit, updateStatus, update, delete, getById, list, stats), strona `/zadania` z filtrami i search, detail sheet, formularz tworzenia (tytuł, opis, jednostka, przypisanie, termin); workflow: manager tworzy → worker zgłasza wykonanie z opisem (submitted) → manager odbiera (done) lub cofa; dashboard ze statystykami zadań
 - [x] **Synology NAS Upload** — klient FileStation API (DSM 7: SynoToken + _sid w URL, nie form body), API route `/api/files` (upload + proxy download), zdjęcia przy zgłoszeniu zadań z podglądem, pliki w `/JDK/JDK-Z4/Zdjecia/zadania/{user}_{task-slug}/`
+- [x] **Etapy prac (stage_templates + unit_stages)** — checklista etapów per typ jednostki (apartment: 6 etapów, commercial: 5, parking: 1, storage: 1); auto-seed szablonów przy pierwszym otwarciu; optimistic updates; auto-sync statusu jednostki z etapów (all done→done, any issue→issue, mix→in_progress); progress bar w detail sheet
+- [x] **Karty instalacyjne LU (PDF)** — podgląd PDF z NAS w detail sheet (split view: PDF na pełną lewą stronę + panel detali po prawej); mapowanie designatora → `ZAS4_MM_AR_INST_{designator}.pdf` z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF/`; link na mobile
+- [x] **Integracja etapy ↔ Q&A** — kliknięcie wykrzyknika przy etapie: oznacza issue + redirect do Q&A z pre-fill (jednostka + nazwa etapu); kierownik przy zamykaniu pytania widzi checkboxy "Usuń problem z etapu" i może zresetować issue stages do pending
 
 **Do zrobienia:**
-- [ ] **Dokumenty (karty instalacyjne PDF)** — do dyskusji
 - [ ] **Krok 10** — Deploy na Vercel
 
 ---
@@ -172,7 +174,7 @@ type UnitType =
 - `~/components/unit/status-badge.tsx` — `<StatusBadge status="done" />` + `<StatusDot />`
 - `~/components/mapa/overview-tile.tsx` — kafelek przeglądowy z progress bar + breakdown typów
 - `~/components/mapa/unit-card.tsx` — karta jednostki z krawędzią w kolorze statusu
-- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z picker statusu
+- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z checklistą etapów, progress bar, podgląd PDF dla LU (split view)
 - `~/components/mapa/breadcrumbs.tsx` — nawigacja drill-down
 - `~/components/mapa/status-filter.tsx` — 5 togglowych pigułek
 - `~/components/qa/question-card.tsx` — karta pytania z timeago, status badge
@@ -183,6 +185,7 @@ type UnitType =
 - `~/components/zadania/task-detail-sheet.tsx` — szczegóły z zgłoszeniem wykonania + upload zdjęcia
 - `~/components/admin/edit-user-sheet.tsx` — edycja/usuwanie usera + reset hasła
 - `~/lib/synology.ts` — klient Synology FileStation API (server-only)
+- `~/components/qa/question-detail-sheet.tsx` — szczegóły z odpowiadaniem + usuwanie problemów z etapów
 
 ---
 
@@ -207,7 +210,9 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Dashboard → Strona główna per rola, powiadomienia (unread count), postęp budowy
 [✅] Krok 6 → M03 Zadania — tworzenie, zgłaszanie wykonania (worker), odbiór (manager)
 [✅] Synology NAS → Upload zdjęć do zadań przez FileStation API (DSM 7)
-[  ] Dokumenty → Karty instalacyjne PDF
+[✅] Etapy prac → stage_templates + unit_stages, checklista per jednostka, auto-sync statusu
+[✅] Karty instalacyjne LU → PDF z NAS w split view detail sheet
+[✅] Integracja etapy ↔ Q&A → zgłaszanie issue z etapu, usuwanie problemu przy zamykaniu Q&A
 [  ] Krok 10 → Deploy na Vercel
 ```
 
@@ -248,6 +253,13 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 - `next.config.js` → `experimental.serverActions.allowedOrigins: ["*.devtunnels.ms"]` — bez tego Server Actions (wylogowanie) pada z "Invalid Server Actions request"
 - `packages/auth/src/index.ts` → `trustedOrigins` zawiera `https://*.devtunnels.ms` — bez tego Better Auth zwraca 403 FORBIDDEN
 - Port Visibility musi być **Public** (nie Private) — inaczej 404
+
+**Etapy prac (stages):**
+- `stage_templates` — szablony etapów, auto-seeded przy pierwszym `getForUnit` (nie seedem)
+- `unit_stages` — instancje per jednostka, tworzone lazy przy otwarciu detail sheet
+- Insert z `onConflictDoNothing()` — zapobiega race condition przy concurrent requests
+- Status jednostki auto-sync z etapów: `syncUnitStatus()` w `stage.toggle` mutation
+- Etapy per typ: apartment(6), commercial(5), parking(1), storage(1) — definicje w `STAGE_DEFINITIONS` w `packages/api/src/router/stage.ts`
 
 **Drizzle — $onUpdateFn:**
 - Przy `mode: "date"` na timestamp, `$onUpdateFn` musi zwracać `new Date()`, NIE `sql\`now()\`` — Drizzle próbuje `.toISOString()` na wartości i pada jeśli dostanie obiekt SQL

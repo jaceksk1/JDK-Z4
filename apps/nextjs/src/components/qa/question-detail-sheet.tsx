@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { StageStatus } from "@acme/validators";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Loader2,
@@ -39,11 +41,33 @@ export function QuestionDetailSheet({
   const { data: session } = useSession();
 
   const [answerText, setAnswerText] = useState("");
+  const [stagesToClear, setStagesToClear] = useState<Set<string>>(new Set());
 
   const { data: question, isLoading } = useQuery({
     ...trpc.question.getById.queryOptions({ id: questionId ?? "" }),
     enabled: !!questionId,
   });
+
+  // Fetch issue stages for the linked unit
+  const unitId = question?.unit?.id;
+  const { data: stages } = useQuery({
+    ...trpc.stage.getForUnit.queryOptions({ unitId: unitId ?? "" }),
+    enabled: !!unitId,
+  });
+  const issueStages = stages?.filter((s) => s.status === "issue") ?? [];
+
+  const toggleStageMutation = useMutation(
+    trpc.stage.toggle.mutationOptions({
+      onSettled: () => {
+        void queryClient.invalidateQueries({
+          queryKey: trpc.stage.pathKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.unit.pathKey(),
+        });
+      },
+    }),
+  );
 
   const answerMutation = useMutation(
     trpc.question.answer.mutationOptions({
@@ -245,14 +269,52 @@ export function QuestionDetailSheet({
                 </section>
               )}
 
+              {/* Issue stages to clear */}
+              {isManager && issueStages.length > 0 && (
+                <section className="rounded-sm border border-red-500/20 bg-red-500/5 p-4">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-500">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Problemy w etapach
+                  </h3>
+                  <div className="space-y-1.5">
+                    {issueStages.map((s) => (
+                      <label
+                        key={s.id}
+                        className="flex items-center gap-2.5 text-sm cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={stagesToClear.has(s.id)}
+                          onChange={(e) => {
+                            const next = new Set(stagesToClear);
+                            if (e.target.checked) next.add(s.id);
+                            else next.delete(s.id);
+                            setStagesToClear(next);
+                          }}
+                          className="h-4 w-4 rounded border-red-300 text-primary accent-primary"
+                        />
+                        <span>Usuń problem: <span className="font-medium">{s.templateName}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Resolve */}
               {canResolve && (
                 <section className="border-t pt-4">
                   <button
-                    disabled={resolveMutation.isPending}
-                    onClick={() =>
-                      resolveMutation.mutate({ questionId: question.id })
-                    }
+                    disabled={resolveMutation.isPending || toggleStageMutation.isPending}
+                    onClick={() => {
+                      // Clear selected issue stages
+                      for (const stageId of stagesToClear) {
+                        toggleStageMutation.mutate({
+                          unitStageId: stageId,
+                          status: "pending",
+                        });
+                      }
+                      resolveMutation.mutate({ questionId: question.id });
+                    }}
                     className="flex items-center gap-2 rounded-sm border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   >
                     {resolveMutation.isPending ? (
@@ -260,7 +322,9 @@ export function QuestionDetailSheet({
                     ) : (
                       <CheckCircle2 className="h-4 w-4" />
                     )}
-                    Zamknij pytanie
+                    {stagesToClear.size > 0
+                      ? "Zamknij pytanie i usuń problemy"
+                      : "Zamknij pytanie"}
                   </button>
                 </section>
               )}

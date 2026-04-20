@@ -229,8 +229,8 @@ function SectionLevel({
 
   if (isLoading) return <TileGridSkeleton count={8} />;
 
-  // Stats already sorted by sortOrder from backend (reversed for top-down display)
-  const sortedFloors = floorStats?.slice().reverse() ?? [];
+  // Stats sorted by sortOrder from backend (ascending: G01 → P07)
+  const sortedFloors = floorStats ?? [];
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
