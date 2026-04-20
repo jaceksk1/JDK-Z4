@@ -2,7 +2,7 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 
 import { and, asc, eq, isNull, sql } from "@acme/db";
-import { buildings, projects, sections, units } from "@acme/db/schema";
+import { buildings, floors, projects, sections, units } from "@acme/db/schema";
 import {
   unitGetByIdInputSchema,
   unitListInputSchema,
@@ -96,22 +96,31 @@ export const unitRouter = {
 
       const rows = await ctx.db
         .select({
-          floor: units.floor,
+          floorId: floors.id,
+          floorLabel: floors.label,
+          floorSortOrder: floors.sortOrder,
           type: units.type,
           status: units.status,
           count: sql<number>`count(*)::int`,
         })
         .from(units)
         .innerJoin(sections, eq(units.sectionId, sections.id))
+        .leftJoin(floors, eq(units.floorId, floors.id))
         .where(
           and(
             eq(units.projectId, project.id),
             eq(sections.name, input.sectionName),
           ),
         )
-        .groupBy(units.floor, units.type, units.status);
+        .groupBy(
+          floors.id,
+          floors.label,
+          floors.sortOrder,
+          units.type,
+          units.status,
+        );
 
-      return aggregateByGroup(rows, (r) => r.floor ?? "—");
+      return aggregateByFloor(rows);
     }),
 
   /** Statystyki garażu — MP i KL osobno */
@@ -168,7 +177,7 @@ export const unitRouter = {
 
       if (input.type) conditions.push(eq(units.type, input.type));
       if (input.status) conditions.push(eq(units.status, input.status));
-      if (input.floor) conditions.push(eq(units.floor, input.floor));
+      if (input.floorId) conditions.push(eq(units.floorId, input.floorId));
 
       const rows = await ctx.db
         .select({
@@ -176,7 +185,9 @@ export const unitRouter = {
           designator: units.designator,
           type: units.type,
           status: units.status,
-          floor: units.floor,
+          floorId: units.floorId,
+          floorLabel: floors.label,
+          floorStorey: floors.storey,
           notes: units.notes,
           buildingName: buildings.name,
           sectionName: sections.name,
@@ -184,10 +195,16 @@ export const unitRouter = {
         .from(units)
         .leftJoin(buildings, eq(units.buildingId, buildings.id))
         .leftJoin(sections, eq(units.sectionId, sections.id))
+        .leftJoin(floors, eq(units.floorId, floors.id))
         .where(and(...conditions))
         .orderBy(asc(units.designator));
 
-      return rows;
+      return rows
+        .map((r) => ({
+          ...r,
+          displayDesignator: displayDesignator(r.designator, r.floorStorey),
+        }))
+        .sort((a, b) => naturalSort(a.displayDesignator, b.displayDesignator));
     }),
 
   getById: protectedProcedure
@@ -199,7 +216,9 @@ export const unitRouter = {
           designator: units.designator,
           type: units.type,
           status: units.status,
-          floor: units.floor,
+          floorId: units.floorId,
+          floorLabel: floors.label,
+          floorStorey: floors.storey,
           notes: units.notes,
           createdAt: units.createdAt,
           updatedAt: units.updatedAt,
@@ -210,6 +229,7 @@ export const unitRouter = {
         .from(units)
         .leftJoin(buildings, eq(units.buildingId, buildings.id))
         .leftJoin(sections, eq(units.sectionId, sections.id))
+        .leftJoin(floors, eq(units.floorId, floors.id))
         .where(eq(units.id, input.id))
         .limit(1);
 
@@ -219,7 +239,10 @@ export const unitRouter = {
           message: `Jednostka ${input.id} nie istnieje`,
         });
       }
-      return row;
+      return {
+        ...row,
+        displayDesignator: displayDesignator(row.designator, row.floorStorey),
+      };
     }),
 
   updateStatus: protectedProcedure
@@ -246,6 +269,41 @@ export const unitRouter = {
 } satisfies TRPCRouterRecord;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Zamienia kondygnację projektową na numer piętra w designatorze.
+ * "A1.2.5" + storey=1 → "A1.1.5"
+ * Nie zmienia LU (A1.U.1), MP, KL.
+ */
+function displayDesignator(
+  designator: string,
+  storey: number | null,
+): string {
+  if (storey === null || storey < 0) return designator;
+  return designator.replace(
+    /^([AB]\d+\.)(\d+)(\.\d+)$/,
+    `$1${storey}$3`,
+  );
+}
+
+/** Sortowanie naturalne: "A1.1.2" < "A1.1.10" (porównuje segmenty numerycznie) */
+function naturalSort(a: string, b: string): number {
+  const pa = a.split(/(\d+)/);
+  const pb = b.split(/(\d+)/);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const sa = pa[i] ?? "";
+    const sb = pb[i] ?? "";
+    const na = Number(sa);
+    const nb = Number(sb);
+    if (!isNaN(na) && !isNaN(nb)) {
+      if (na !== nb) return na - nb;
+    } else {
+      const cmp = sa.localeCompare(sb);
+      if (cmp !== 0) return cmp;
+    }
+  }
+  return 0;
+}
 
 interface RawStatsRow {
   status: string;
@@ -307,6 +365,64 @@ function aggregateByGroup<T extends RawStatsRow>(
   }
 
   return Array.from(map.entries())
-    .map(([name, stats]) => ({ name, ...stats }))
+    .map(([name, stats]) => ({ name, id: null as string | null, sortOrder: 0, ...stats }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Wariant aggregateByGroup specyficzny dla pięter — zwraca id + sortOrder */
+function aggregateByFloor(
+  rows: {
+    floorId: string | null;
+    floorLabel: string | null;
+    floorSortOrder: number | null;
+    type: string;
+    status: string;
+    count: number;
+  }[],
+) {
+  const map = new Map<
+    string,
+    GroupStats & { id: string | null; sortOrder: number }
+  >();
+
+  const empty = (): GroupStats & { id: string | null; sortOrder: number } => ({
+    total: 0,
+    not_started: 0,
+    in_progress: 0,
+    to_check: 0,
+    done: 0,
+    issue: 0,
+    apartment: 0,
+    commercial: 0,
+    parking: 0,
+    storage: 0,
+    id: null,
+    sortOrder: 99,
+  });
+
+  for (const row of rows) {
+    const key = row.floorLabel ?? "—";
+    const existing = map.get(key) ?? {
+      ...empty(),
+      id: row.floorId,
+      sortOrder: row.floorSortOrder ?? 99,
+    };
+    existing.total += row.count;
+
+    if (row.status in existing) {
+      (existing as unknown as Record<string, number>)[row.status] =
+        (existing as unknown as Record<string, number>)[row.status]! +
+        row.count;
+    }
+    if (row.type in existing) {
+      (existing as unknown as Record<string, number>)[row.type] =
+        (existing as unknown as Record<string, number>)[row.type]! + row.count;
+    }
+
+    map.set(key, existing);
+  }
+
+  return Array.from(map.entries())
+    .map(([name, { id, sortOrder, ...stats }]) => ({ name, id, sortOrder, ...stats }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }

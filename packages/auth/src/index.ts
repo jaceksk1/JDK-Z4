@@ -32,6 +32,7 @@ export function initAuth<
       "http://localhost:3001",
       "http://localhost:3002",
       "expo://",
+      "https://*.devtunnels.ms",
     ],
     plugins: [
       username(),

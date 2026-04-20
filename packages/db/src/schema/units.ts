@@ -1,7 +1,7 @@
-import { sql } from "drizzle-orm";
 import { index, pgEnum, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { buildings } from "./buildings";
+import { floors } from "./floors";
 import { projects } from "./projects";
 import { sections } from "./sections";
 
@@ -39,8 +39,10 @@ export const units = pgTable(
     type: unitTypeEnum().notNull(),
     // Unikalny oznacznik lokalu: "A1.2.5", "A1.U.1", "MP20", "KL 1"
     designator: t.text().notNull(),
-    // Piętro: "G01", "P00"–"P07" — NULL dla MP i KL
-    floor: t.text(),
+    // FK do tabeli floors — NULL dla KL (komórki lokatorskie)
+    floorId: t
+      .uuid()
+      .references(() => floors.id, { onDelete: "set null" }),
     status: unitStatusEnum().notNull().default("not_started"),
     notes: t.text(),
     createdAt: t
@@ -49,7 +51,7 @@ export const units = pgTable(
       .notNull(),
     updatedAt: t
       .timestamp({ mode: "date", withTimezone: true })
-      .$onUpdateFn(() => sql`now()`),
+      .$onUpdateFn(() => new Date()),
   }),
   (table) => [
     uniqueIndex("units_project_designator_unique").on(

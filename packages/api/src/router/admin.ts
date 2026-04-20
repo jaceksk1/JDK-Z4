@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 import { eq } from "@acme/db";
 import { user } from "@acme/db/schema";
-import { createUserInputSchema } from "@acme/validators";
+import { createUserInputSchema, updateUserInputSchema } from "@acme/validators";
 
 import { protectedProcedure } from "../trpc";
 
@@ -46,6 +46,7 @@ export const adminRouter = {
         name: user.name,
         username: user.username,
         role: user.role,
+        company: user.company,
         createdAt: user.createdAt,
       })
       .from(user)
@@ -90,10 +91,10 @@ export const adminRouter = {
         });
       }
 
-      // Ustaw rolę (admin plugin nie jest używany bezpośrednio — aktualizujemy ręcznie)
+      // Ustaw rolę i firmę (admin plugin nie jest używany bezpośrednio — aktualizujemy ręcznie)
       await ctx.db
         .update(user)
-        .set({ role: input.role })
+        .set({ role: input.role, company: input.company ?? null })
         .where(eq(user.id, result.user.id));
 
       return {
@@ -101,6 +102,38 @@ export const adminRouter = {
         name: fullName,
         username,
         role: input.role,
+        company: input.company ?? null,
+      };
+    }),
+
+  /** Edycja danych użytkownika */
+  updateUser: adminProcedure
+    .input(updateUserInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.query.user.findFirst({
+        where: (u, { eq: eqFn }) => eqFn(u.id, input.userId),
+      });
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Użytkownik nie istnieje",
+        });
+      }
+
+      await ctx.db
+        .update(user)
+        .set({
+          name: input.name,
+          role: input.role,
+          company: input.company ?? null,
+        })
+        .where(eq(user.id, input.userId));
+
+      return {
+        id: input.userId,
+        name: input.name,
+        role: input.role,
+        company: input.company ?? null,
       };
     }),
 
@@ -122,6 +155,32 @@ export const adminRouter = {
         headers: ctx.headers,
         asResponse: false,
       });
+      return { success: true };
+    }),
+  /** Usunięcie użytkownika */
+  deleteUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Nie pozwól usunąć samego siebie
+      if (input.userId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nie możesz usunąć swojego konta",
+        });
+      }
+
+      const existing = await ctx.db.query.user.findFirst({
+        where: (u, { eq: eqFn }) => eqFn(u.id, input.userId),
+      });
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Użytkownik nie istnieje",
+        });
+      }
+
+      await ctx.db.delete(user).where(eq(user.id, input.userId));
+
       return { success: true };
     }),
 } satisfies TRPCRouterRecord;

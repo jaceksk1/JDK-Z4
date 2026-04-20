@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import { pgTable } from "drizzle-orm/pg-core";
 
 export const projects = pgTable("projects", (t) => ({
@@ -11,5 +10,5 @@ export const projects = pgTable("projects", (t) => ({
     .notNull(),
   updatedAt: t
     .timestamp({ mode: "date", withTimezone: true })
-    .$onUpdateFn(() => sql`now()`),
+    .$onUpdateFn(() => new Date()),
 }));

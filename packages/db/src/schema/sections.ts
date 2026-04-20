@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import { index, pgTable } from "drizzle-orm/pg-core";
 
 import { buildings } from "./buildings";
@@ -18,7 +17,7 @@ export const sections = pgTable(
       .notNull(),
     updatedAt: t
       .timestamp({ mode: "date", withTimezone: true })
-      .$onUpdateFn(() => sql`now()`),
+      .$onUpdateFn(() => new Date()),
   }),
   (table) => [index("sections_building_idx").on(table.buildingId)],
 );

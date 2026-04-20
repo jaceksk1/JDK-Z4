@@ -35,8 +35,8 @@ export const unitListInputSchema = z.object({
   sectionName: z.string().min(1).max(4).optional(),
   type: unitTypeSchema.optional(),
   status: unitStatusSchema.optional(),
-  /** Piętro: "G01" | "P00"–"P07" */
-  floor: z.string().min(1).max(4).optional(),
+  /** ID kondygnacji z tabeli floors */
+  floorId: z.string().uuid().optional(),
   /** Czy uwzględniać jednostki bez budynku (MP, KL) */
   includeGarage: z.boolean().default(false),
 });

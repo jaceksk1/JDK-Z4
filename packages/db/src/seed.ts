@@ -18,7 +18,7 @@ import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 import { db } from "./client";
-import { buildings, projects, sections, units } from "./schema";
+import { buildings, floors, projects, sections, units } from "./schema";
 
 // ─── Ścieżka do pliku z danymi ────────────────────────────────────────────────
 
@@ -32,7 +32,8 @@ const DISCOVER_PATH = resolve(__dirname, "../../../dane/discover_output.txt");
 interface ApartmentRecord {
   designator: string;
   sectionName: string;
-  floor: string;
+  /** Numer kondygnacji z designatora (środkowa cyfra, np. 2 z "A1.2.5") */
+  designatorKey: number;
 }
 
 interface LuRecord {
@@ -75,12 +76,12 @@ function parseDiscoverOutput(filePath: string): {
     if (parts.length !== 3) continue;
     const [sectionName, floorStr] = parts;
     if (!sectionName || !floorStr) continue;
-    const floorNum = parseInt(floorStr, 10);
-    if (isNaN(floorNum) || floorNum < 0 || floorNum > 7) continue;
+    const designatorKey = parseInt(floorStr, 10);
+    if (isNaN(designatorKey) || designatorKey < 0 || designatorKey > 7) continue;
     apartments.push({
       designator,
       sectionName,
-      floor: `P${String(floorNum).padStart(2, "0")}`,
+      designatorKey,
     });
   }
 
@@ -171,6 +172,43 @@ async function seed() {
   const sectionMap = new Map(sectionRows.map((s) => [s.name, s]));
   console.log(`✅ Sekcje: ${sectionRows.map((s) => s.name).join(", ")}`);
 
+  // ── 3b. Kondygnacje (floors) ────────────────────────────────────────────────
+  //   designatorKey → storey:
+  //     null → -1  Garaż
+  //     1    →  0  Parter
+  //     2    →  1  Piętro 1
+  //     ...
+  //     7    →  6  Piętro 6
+  const floorDefs = [
+    { designatorKey: null, storey: -1, label: "Garaż",    sortOrder: 0 },
+    { designatorKey: 1,    storey: 0,  label: "Parter",   sortOrder: 1 },
+    { designatorKey: 2,    storey: 1,  label: "Piętro 1", sortOrder: 2 },
+    { designatorKey: 3,    storey: 2,  label: "Piętro 2", sortOrder: 3 },
+    { designatorKey: 4,    storey: 3,  label: "Piętro 3", sortOrder: 4 },
+    { designatorKey: 5,    storey: 4,  label: "Piętro 4", sortOrder: 5 },
+    { designatorKey: 6,    storey: 5,  label: "Piętro 5", sortOrder: 6 },
+    { designatorKey: 7,    storey: 6,  label: "Piętro 6", sortOrder: 7 },
+  ];
+
+  const floorRows = await db
+    .insert(floors)
+    .values(
+      floorDefs.map((f) => ({
+        projectId: project.id,
+        label: f.label,
+        designatorKey: f.designatorKey,
+        storey: f.storey,
+        sortOrder: f.sortOrder,
+      })),
+    )
+    .returning();
+
+  // Mapa designatorKey → floor id (null key = garaż)
+  const floorByDesignatorKey = new Map(
+    floorRows.map((f) => [f.designatorKey, f.id]),
+  );
+  console.log(`✅ Kondygnacje: ${floorRows.map((f) => f.label).join(", ")}`);
+
   // ── 4. Parsuj dane ──────────────────────────────────────────────────────────
   console.log(`📂 Parsowanie: ${DISCOVER_PATH}`);
   const { apartments, lu } = parseDiscoverOutput(DISCOVER_PATH);
@@ -203,12 +241,12 @@ async function seed() {
       sectionId: section.id,
       type: "apartment",
       designator: apt.designator,
-      floor: apt.floor,
+      floorId: floorByDesignatorKey.get(apt.designatorKey) ?? null,
       status: "not_started",
     });
   }
 
-  // LU
+  // LU — parter (designatorKey = 1)
   for (const luUnit of lu) {
     const section = sectionMap.get(luUnit.sectionName);
     if (!section) {
@@ -222,12 +260,12 @@ async function seed() {
       sectionId: section.id,
       type: "commercial",
       designator: luUnit.designator,
-      floor: "P00",
+      floorId: floorByDesignatorKey.get(1) ?? null,
       status: "not_started",
     });
   }
 
-  // MP — bez budynku i sekcji (garaż wspólny)
+  // MP — garaż (designatorKey = null)
   for (const mp of mpList) {
     allUnits.push({
       projectId: project.id,
@@ -235,12 +273,12 @@ async function seed() {
       sectionId: null,
       type: "parking",
       designator: mp,
-      floor: "G01",
+      floorId: floorByDesignatorKey.get(null) ?? null,
       status: "not_started",
     });
   }
 
-  // KL — bez budynku i sekcji
+  // KL — bez kondygnacji
   for (const kl of klList) {
     allUnits.push({
       projectId: project.id,
@@ -248,7 +286,7 @@ async function seed() {
       sectionId: null,
       type: "storage",
       designator: kl,
-      floor: null,
+      floorId: null,
       status: "not_started",
     });
   }

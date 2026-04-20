@@ -4,7 +4,9 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
+  Home,
   LayoutGrid,
   ListChecks,
   LogOut,
@@ -21,6 +23,7 @@ import { useTheme } from "@acme/ui/theme";
 
 import { signOutAction } from "~/auth/actions";
 import { useSession } from "~/auth/client";
+import { useTRPC } from "~/trpc/react";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
@@ -33,26 +36,33 @@ interface NavItem {
   label: string;
   badge: string;
   icon: LucideIcon;
+  showUnread?: boolean;
+  adminOnly?: boolean;
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", badge: "", icon: Home, showUnread: true },
   { href: "/mapa", label: "Mapa Budynku", badge: "M01", icon: LayoutGrid },
   { href: "/zadania", label: "Zadania", badge: "M03", icon: ListChecks },
-  { href: "/qa", label: "Q&A", badge: "M08", icon: MessageSquare },
-  { href: "/admin/users", label: "Użytkownicy", badge: "ADM", icon: Users },
+  { href: "/qa", label: "Q&A", badge: "M08", icon: MessageSquare, showUnread: true },
+  { href: "/admin/users", label: "Użytkownicy", badge: "ADM", icon: Users, adminOnly: true },
 ] as const;
 
 interface NavLinksProps {
   pathname: string;
   onNavigate?: () => void;
+  unreadCount: number;
+  userRole: string;
 }
 
-function NavLinks({ pathname, onNavigate }: NavLinksProps) {
+function NavLinks({ pathname, onNavigate, unreadCount, userRole }: NavLinksProps) {
   return (
     <nav className="flex flex-col gap-0.5 px-3">
       {NAV_ITEMS.map((item) => {
-        const isActive = pathname.startsWith(item.href);
+        if (item.adminOnly && userRole !== "admin") return null;
+        const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
         const Icon = item.icon;
+        const showBadgeCount = item.showUnread && unreadCount > 0;
         return (
           <Link
             key={item.href}
@@ -67,16 +77,29 @@ function NavLinks({ pathname, onNavigate }: NavLinksProps) {
           >
             <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
             <span className="flex-1">{item.label}</span>
-            <span
-              className={cn(
-                "rounded-sm px-1.5 py-0.5 text-[10px] font-mono font-semibold",
-                isActive
-                  ? "bg-primary-foreground/15 text-primary-foreground"
-                  : "bg-muted/50 text-muted-foreground",
-              )}
-            >
-              {item.badge}
-            </span>
+            {showBadgeCount ? (
+              <span
+                className={cn(
+                  "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                  isActive
+                    ? "bg-primary-foreground text-primary"
+                    : "bg-primary text-primary-foreground",
+                )}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            ) : item.badge ? (
+              <span
+                className={cn(
+                  "rounded-sm px-1.5 py-0.5 text-[10px] font-mono font-semibold",
+                  isActive
+                    ? "bg-primary-foreground/15 text-primary-foreground"
+                    : "bg-muted/50 text-muted-foreground",
+                )}
+              >
+                {item.badge}
+              </span>
+            ) : null}
           </Link>
         );
       })}
@@ -174,6 +197,17 @@ function UserFooter({ onSignOut }: { onSignOut?: () => void }) {
 export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const trpc = useTRPC();
+
+  const { data: dashData } = useQuery({
+    ...trpc.dashboard.stats.queryOptions(),
+    enabled: !!session,
+    refetchInterval: 60_000, // odświeżaj co minutę
+  });
+
+  const unreadCount = dashData?.unreadCount ?? 0;
+  const userRole = session?.user?.role ?? "worker";
 
   return (
     <>
@@ -181,7 +215,7 @@ export function Sidebar() {
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <SidebarHeader />
         <div className="flex-1 overflow-y-auto py-3">
-          <NavLinks pathname={pathname} />
+          <NavLinks pathname={pathname} unreadCount={unreadCount} userRole={userRole} />
         </div>
         <UserFooter />
       </aside>
@@ -190,10 +224,15 @@ export function Sidebar() {
       <div className="md:hidden fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-4">
         <button
           onClick={() => setMobileOpen(true)}
-          className="rounded-sm p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="relative rounded-sm p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="Otwórz menu"
         >
           <Menu className="h-5 w-5" strokeWidth={2} />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </button>
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
@@ -225,6 +264,8 @@ export function Sidebar() {
               <NavLinks
                 pathname={pathname}
                 onNavigate={() => setMobileOpen(false)}
+                unreadCount={unreadCount}
+                userRole={userRole}
               />
             </div>
             <UserFooter onSignOut={() => setMobileOpen(false)} />

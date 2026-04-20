@@ -11,6 +11,9 @@ export const user = pgTable("user", (t) => ({
   // username plugin
   username: t.text().unique(),
   displayUsername: t.text(),
+  // custom fields
+  company: t.text(),
+  lastSeenQaAt: t.timestamp({ mode: "date", withTimezone: true }),
   // admin plugin
   role: t.text().default("worker"),
   banned: t.boolean(),

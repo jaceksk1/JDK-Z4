@@ -24,7 +24,8 @@ export default function MapaPage() {
 
   const building = searchParams.get("building");
   const section = searchParams.get("section");
-  const floor = searchParams.get("floor");
+  const floorId = searchParams.get("floorId");
+  const floorLabel = searchParams.get("floorLabel");
   const unitId = searchParams.get("unit");
   const statusFilter = searchParams.get("status") as UnitStatus | null;
   const viewMode = searchParams.get("view") ?? "list"; // list | plan
@@ -32,7 +33,7 @@ export default function MapaPage() {
   const level: Level =
     building === "garage"
       ? "garage"
-      : floor
+      : floorId
         ? "floor"
         : section
           ? "section"
@@ -52,16 +53,16 @@ export default function MapaPage() {
           label: `Klatka ${section}`,
           href: `/mapa?building=${building}&section=${section}`,
         });
-        if (floor) {
+        if (floorId && floorLabel) {
           c.push({
-            label: floor,
-            href: `/mapa?building=${building}&section=${section}&floor=${floor}`,
+            label: floorLabel,
+            href: `/mapa?building=${building}&section=${section}&floorId=${floorId}&floorLabel=${encodeURIComponent(floorLabel)}`,
           });
         }
       }
     }
     return c;
-  }, [building, section, floor]);
+  }, [building, section, floorId, floorLabel]);
 
   const setStatusFilter = (status: UnitStatus | null) => {
     const params = new URLSearchParams(searchParams);
@@ -119,7 +120,8 @@ export default function MapaPage() {
         <FloorLevel
           building={building!}
           section={section!}
-          floor={floor!}
+          floorId={floorId!}
+          floorLabel={floorLabel ?? ""}
           viewMode={viewMode as "list" | "plan"}
           onViewModeChange={setViewMode}
           statusFilter={statusFilter}
@@ -216,7 +218,7 @@ function SectionLevel({
   section: string;
 }) {
   const trpc = useTRPC();
-  const { data: floors, isLoading } = useQuery(
+  const { data: floorStats, isLoading } = useQuery(
     trpc.unit.stats.queryOptions({
       projectCode: "Z4",
       level: "floor",
@@ -227,29 +229,21 @@ function SectionLevel({
 
   if (isLoading) return <TileGridSkeleton count={8} />;
 
-  // Sortuj piętra odwrotnie: P07 → P00 (odgórnie)
-  const sortedFloors =
-    floors?.slice().sort((a, b) => b.name.localeCompare(a.name)) ?? [];
+  // Stats already sorted by sortOrder from backend (reversed for top-down display)
+  const sortedFloors = floorStats?.slice().reverse() ?? [];
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {sortedFloors.map((f) => (
         <OverviewTile
-          key={f.name}
-          label={floorLabel(f.name)}
+          key={f.id ?? f.name}
+          label={f.name}
           stats={f}
-          href={`/mapa?building=${building}&section=${section}&floor=${f.name}`}
+          href={`/mapa?building=${building}&section=${section}&floorId=${f.id}&floorLabel=${encodeURIComponent(f.name)}`}
         />
       ))}
     </div>
   );
-}
-
-function floorLabel(floor: string): string {
-  if (floor === "P00") return "Parter";
-  if (floor.startsWith("P")) return `Piętro ${Number(floor.slice(1))}`;
-  if (floor === "G01") return "Garaż";
-  return floor;
 }
 
 // ─── Level: Floor (lista jednostek + zakładki) ──────────────────────────────
@@ -257,7 +251,8 @@ function floorLabel(floor: string): string {
 interface FloorLevelProps {
   building: string;
   section: string;
-  floor: string;
+  floorId: string;
+  floorLabel: string;
   viewMode: "list" | "plan";
   onViewModeChange: (mode: "list" | "plan") => void;
   statusFilter: UnitStatus | null;
@@ -269,7 +264,8 @@ interface FloorLevelProps {
 function FloorLevel({
   building,
   section,
-  floor,
+  floorId,
+  floorLabel,
   viewMode,
   onViewModeChange,
   statusFilter,
@@ -283,7 +279,7 @@ function FloorLevel({
       projectCode: "Z4",
       buildingName: building,
       sectionName: section,
-      floor,
+      floorId,
     }),
   );
 
@@ -356,7 +352,7 @@ function FloorLevel({
           )}
         </>
       ) : (
-        <PlanPlaceholder floor={floor} section={section} />
+        <PlanPlaceholder floor={floorLabel} section={section} />
       )}
     </div>
   );
@@ -372,6 +368,7 @@ function UnitSection({
   units: {
     id: string;
     designator: string;
+    displayDesignator: string;
     type: "apartment" | "commercial" | "parking" | "storage";
     status: UnitStatus;
   }[];
@@ -388,7 +385,7 @@ function UnitSection({
         {units.map((u) => (
           <UnitCard
             key={u.id}
-            designator={u.designator}
+            designator={u.displayDesignator}
             type={u.type}
             status={u.status}
             onClick={() => onUnitClick(u.id)}

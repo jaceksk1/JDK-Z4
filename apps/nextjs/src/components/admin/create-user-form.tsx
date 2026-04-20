@@ -32,6 +32,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<Role>("worker");
+  const [company, setCompany] = useState("");
   const [password, setPassword] = useState("");
 
   const trpc = useTRPC();
@@ -45,6 +46,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
         setLastName("");
         setPassword("");
         setRole("worker");
+        setCompany("");
         onSuccess();
       },
       onError: (err) => {
@@ -60,7 +62,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createUser.mutate({ firstName, lastName, role, password });
+    createUser.mutate({ firstName, lastName, role, company: company || undefined, password });
   }
 
   return (
@@ -112,6 +114,17 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium">Firma</label>
+        <input
+          type="text"
+          value={company}
+          onChange={(e) => setCompany(e.target.value)}
+          placeholder="np. JDK Elektro"
+          className="rounded-sm border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">

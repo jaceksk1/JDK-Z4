@@ -18,6 +18,13 @@ const config = {
 
   /** We already do linting and typechecking as separate tasks in CI */
   typescript: { ignoreBuildErrors: true },
+
+  /** Allow Server Actions from dev tunnels and other origins */
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["*.devtunnels.ms"],
+    },
+  },
 };
 
 export default config;

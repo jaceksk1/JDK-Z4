@@ -97,18 +97,21 @@ JDK Z4/
 - [x] `pnpm dev:next` — aplikacja działa (localhost:3000 lub 3001)
 
 **Zrobione moduły:**
-- [x] **Krok 1** — Schema Drizzle (projects, buildings, sections, units + enumy unit_status, unit_type)
+- [x] **Krok 1** — Schema Drizzle (projects, buildings, sections, floors, units, questions + enumy unit_status, unit_type, question_status)
 - [x] **Krok 2** — Import 735 jednostek do Supabase (`pnpm db:seed` + `pnpm db:fix-units` do czyszczenia artefaktów DWG)
-- [x] **Krok 3** — Layout dashboardu: sidebar z linkami, hamburger na mobile, user footer z dark toggle
+- [x] **Krok 3** — Layout dashboardu: sidebar z linkami + badge unread, hamburger na mobile, user footer z dark toggle
 - [x] **Krok 4** — tRPC router `unit` (list, getById, updateStatus, **stats** z breakdown typów, **garageStats**) + validators
 - [x] **Krok 9 (wcześniej)** — Auth: Better Auth z username plugin + admin plugin
 - [x] **UI/UX system** — brand granatowy `#1e40af`, dark mode + toggle, Lucide ikony, toasty (sonner), StatusBadge, skeleton loaders, empty states
 - [x] **Krok 5 M01 Mapa Budynku** — drill-down Budynek → Klatka → Piętro → Jednostki + Garaż; breadcrumbs, breakdown typów ("63 mieszkania + 7 LU"), status filter, unit detail sheet z pickerem statusu, tabs Lista/Plan (Plan jako placeholder na rzut kondygnacji)
+- [x] **Krok 7 M08 Q&A** — schema questions, tRPC router (create, answer, resolve, getById, list z cursor pagination + search), strona `/qa` z listą, filtrami, formularzem pytania z pickerem jednostki, detail sheet z odpowiadaniem (manager) i zamykaniem
+- [x] **Dashboard** — strona `/dashboard` per rola (worker: moje pytania/odpowiedzi; manager: pytania do odpowiedzenia), kafelki statystyk Q&A, postęp budowy z progress bar, szybkie akcje; po logowaniu redirect → `/dashboard`
+- [x] **Powiadomienia (proste)** — pole `lastSeenQaAt` na userze, unread count w sidebarze (badge przy Dashboard i Q&A), auto-mark-seen na dashboardzie, odświeżanie co 60s
+- [x] **Admin rozszerzony** — edycja użytkownika (imię, rola, firma), reset hasła, usunięcie z potwierdzeniem; filtrowanie (rola, firma, search), sortowanie kolumn; pole `company` na userze
 
 **Do zrobienia:**
 - [ ] **Dokumenty (karty instalacyjne PDF)** — ODŁOŻONE; do dyskusji opcja A (link zewnętrzny)/B (Supabase Storage)/C (wersjonowanie)
 - [ ] **Krok 6** — Moduł M03 Zadania
-- [ ] **Krok 7** — Moduł M08 Q&A (wg PRD)
 - [ ] **Krok 10** — Deploy na Vercel
 
 ---
@@ -117,13 +120,14 @@ JDK Z4/
 
 **Logowanie:** username (np. `jan.kowalski`) + hasło  
 **Konto startowe:** `admin` / `admin` (utworzone przez `pnpm db:seed-admin`)  
-**Tworzenie userów:** Panel admina na `/admin/users` — tylko admin może dodawać  
+**Tworzenie userów:** Panel admina na `/admin/users` — admin może dodawać, edytować, usuwać, resetować hasła  
 **Role:** `admin` | `manager` | `worker`  
+**Pola użytkownika:** name, username, email (auto), role, company (firma), lastSeenQaAt (powiadomienia)  
 **Username auto-gen:** "Jan Kowalski" → `jan.kowalski` (polskie znaki → ASCII)  
 **Wewnętrzny email:** `{username}@jdkz4.local` (wymagany przez Better Auth, ale niewidoczny dla usera)  
 **minPasswordLength:** 4 znaki (ustawione w `packages/auth/src/index.ts` + `seed-admin.ts`)  
 **Wylogowanie:** Server Action w `apps/nextjs/src/auth/actions.ts` (nie client `signOut` — nie działa)  
-**trustedOrigins:** localhost:3000, 3001, 3002 (obsługa zmiennych portów w dev)
+**trustedOrigins:** localhost:3000, 3001, 3002, `*.devtunnels.ms` (dev tunnels z VS Code)
 
 ---
 
@@ -182,16 +186,17 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 ## KOLEJNOŚĆ BUDOWY
 
 ```
-[✅] Krok 1 → Schema Drizzle (units, buildings, sections, projects)
+[✅] Krok 1 → Schema Drizzle (units, buildings, sections, floors, projects, questions)
 [✅] Krok 2 → Import 735 jednostek do Supabase — pnpm db:seed + db:fix-units
 [✅] Krok 3 → Layout dashboardu + nawigacja + user footer z dark toggle
 [✅] Krok 4 → tRPC router units (list, getById, updateStatus, stats, garageStats)
-[✅] Krok 9 → Auth (Better Auth + username + admin) — ZROBIONY WCZEŚNIEJ
+[✅] Krok 9 → Auth (Better Auth + username + admin) + panel admina (CRUD users, firma, filtrowanie)
 [✅] UI/UX → Brand, dark mode, Lucide, toasty, StatusBadge, skeletons
 [✅] Krok 5 → M01 Mapa Budynku — drill-down + detail sheet + zmiana statusu
+[✅] Krok 7 → M08 Q&A — pytania, odpowiedzi, zamykanie, archiwum, search
+[✅] Dashboard → Strona główna per rola, powiadomienia (unread count), postęp budowy
 [  ] Dokumenty → Karty instalacyjne PDF (opcja A/B/C do wyboru)
 [  ] Krok 6 → M03 Zadania
-[  ] Krok 7 → M08 Q&A (wg gotowego PRD)
 [  ] Krok 10 → Deploy na Vercel
 ```
 
@@ -226,4 +231,12 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 **Uruchamianie dev:**
 - `pnpm dev:next` (NIE `pnpm dev` — ten próbuje odpalić Expo w TUI mode i pada)
 - Port domyślnie 3000, ale jeśli zajęty — Next sam wybierze 3001
-- `trustedOrigins` w auth config zawiera 3000, 3001, 3002
+- `trustedOrigins` w auth config zawiera 3000, 3001, 3002, `*.devtunnels.ms`
+
+**Dev Tunnels (VS Code):**
+- `next.config.js` → `experimental.serverActions.allowedOrigins: ["*.devtunnels.ms"]` — bez tego Server Actions (wylogowanie) pada z "Invalid Server Actions request"
+- `packages/auth/src/index.ts` → `trustedOrigins` zawiera `https://*.devtunnels.ms` — bez tego Better Auth zwraca 403 FORBIDDEN
+- Port Visibility musi być **Public** (nie Private) — inaczej 404
+
+**Drizzle — $onUpdateFn:**
+- Przy `mode: "date"` na timestamp, `$onUpdateFn` musi zwracać `new Date()`, NIE `sql\`now()\`` — Drizzle próbuje `.toISOString()` na wartości i pada jeśli dostanie obiekt SQL

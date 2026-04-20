@@ -30,7 +30,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/mapa");
+    router.push("/dashboard");
     router.refresh();
   }
 

@@ -72,7 +72,7 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
             ) : unit ? (
               <>
                 <h2 className="font-mono text-xl font-bold tracking-tight">
-                  {unit.designator}
+                  {unit.displayDesignator}
                 </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {TYPE_LABEL[unit.type]}
@@ -112,10 +112,10 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
                       <dd className="font-medium">{unit.sectionName}</dd>
                     </div>
                   )}
-                  {unit.floor && (
+                  {unit.floorLabel && (
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Piętro</dt>
-                      <dd className="font-medium">{unit.floor}</dd>
+                      <dd className="font-medium">{unit.floorLabel}</dd>
                     </div>
                   )}
                 </dl>
