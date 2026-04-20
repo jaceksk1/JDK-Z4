@@ -1,7 +1,7 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 
 import { and, eq, gt, sql } from "@acme/db";
-import { projects, questions, units, user } from "@acme/db/schema";
+import { projects, questions, tasks, units, user } from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
 
@@ -78,6 +78,16 @@ export const dashboardRouter = {
             ),
           );
 
+    // Statystyki zadań
+    const [taskStats] = await ctx.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        open: sql<number>`count(*) filter (where ${tasks.status} = 'open')::int`,
+        done: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
+      })
+      .from(tasks)
+      .where(eq(tasks.projectId, project.id));
+
     // Statystyki jednostek
     const [unitStats] = await ctx.db
       .select({
@@ -99,6 +109,11 @@ export const dashboardRouter = {
         resolved: qaStats?.resolved ?? 0,
       },
       myCount: myStats?.count ?? 0,
+      tasks: {
+        total: taskStats?.total ?? 0,
+        open: taskStats?.open ?? 0,
+        done: taskStats?.done ?? 0,
+      },
       units: {
         total: unitStats?.total ?? 0,
         done: unitStats?.done ?? 0,

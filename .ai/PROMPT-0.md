@@ -109,9 +109,11 @@ JDK Z4/
 - [x] **Powiadomienia (proste)** — pole `lastSeenQaAt` na userze, unread count w sidebarze (badge przy Dashboard i Q&A), auto-mark-seen na dashboardzie, odświeżanie co 60s
 - [x] **Admin rozszerzony** — edycja użytkownika (imię, rola, firma), reset hasła, usunięcie z potwierdzeniem; filtrowanie (rola, firma, search), sortowanie kolumn; pole `company` na userze
 
+- [x] **Krok 6 M03 Zadania** — schema tasks (open/submitted/done), tRPC router (create, submit, updateStatus, update, delete, getById, list, stats), strona `/zadania` z filtrami i search, detail sheet, formularz tworzenia (tytuł, opis, jednostka, przypisanie, termin); workflow: manager tworzy → worker zgłasza wykonanie z opisem (submitted) → manager odbiera (done) lub cofa; dashboard ze statystykami zadań
+
 **Do zrobienia:**
 - [ ] **Dokumenty (karty instalacyjne PDF)** — ODŁOŻONE; do dyskusji opcja A (link zewnętrzny)/B (Supabase Storage)/C (wersjonowanie)
-- [ ] **Krok 6** — Moduł M03 Zadania
+- [ ] **Zdjęcia do zadań** — upload zdjęć jako dowód wykonania; docelowo Synology NAS, tymczasowo Supabase Storage
 - [ ] **Krok 10** — Deploy na Vercel
 
 ---
@@ -195,8 +197,9 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Krok 5 → M01 Mapa Budynku — drill-down + detail sheet + zmiana statusu
 [✅] Krok 7 → M08 Q&A — pytania, odpowiedzi, zamykanie, archiwum, search
 [✅] Dashboard → Strona główna per rola, powiadomienia (unread count), postęp budowy
+[✅] Krok 6 → M03 Zadania — tworzenie, zgłaszanie wykonania (worker), odbiór (manager)
 [  ] Dokumenty → Karty instalacyjne PDF (opcja A/B/C do wyboru)
-[  ] Krok 6 → M03 Zadania
+[  ] Zdjęcia → Upload zdjęć do zadań (docelowo Synology NAS)
 [  ] Krok 10 → Deploy na Vercel
 ```
 

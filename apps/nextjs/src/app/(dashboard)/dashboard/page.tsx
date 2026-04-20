@@ -7,8 +7,10 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ClipboardList,
   Clock,
   HardHat,
+  ListChecks,
   MessageSquare,
   MessageSquarePlus,
   TrendingUp,
@@ -117,6 +119,33 @@ export default function DashboardPage() {
           accent="not-started"
         />
       </div>
+
+      {/* Zadania */}
+      {data.tasks.total > 0 && (
+        <div className="grid gap-4 sm:grid-cols-3 mb-6">
+          <StatCard
+            label="Otwarte zadania"
+            value={data.tasks.open}
+            icon={<ClipboardList className="h-4 w-4" />}
+            href="/zadania?status=open"
+            accent="to-check"
+          />
+          <StatCard
+            label="Zamknięte zadania"
+            value={data.tasks.done}
+            icon={<ListChecks className="h-4 w-4" />}
+            href="/zadania?status=done"
+            accent="done"
+          />
+          <StatCard
+            label="Wszystkie zadania"
+            value={data.tasks.total}
+            icon={<ClipboardList className="h-4 w-4" />}
+            href="/zadania"
+            accent="primary"
+          />
+        </div>
+      )}
 
       {/* Postęp budowy */}
       <div className="rounded-lg border bg-card p-5 shadow-sm">
