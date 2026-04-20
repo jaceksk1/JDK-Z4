@@ -42,20 +42,20 @@ Na początku każdej sesji zadaj te pytania w tej kolejności. Nie zaczynaj omaw
 
 ## Kolejność budowy MVP (plan bazowy)
 
-| # | Zadanie | Szacunek | Status |
-|---|---------|----------|--------|
-| 1 | Schema Drizzle (units, buildings, sections, projects) | 2-3h | - |
-| 2 | Import 735 jednostek z DXF do Supabase | 3-4h | - |
-| 3 | Layout dashboardu + nawigacja (shell aplikacji) | 2-3h | - |
-| 4 | tRPC router dla units (CRUD podstawowy) | 2-3h | - |
-| 5 | M01 Mapa Budynku (widok jednostek) | 4-6h | - |
-| 6 | M03 Zadania (lista zadań na jednostkę) | 4-6h | - |
-| 7 | M08 Q&A — core (zadawanie pytań, odpowiadanie) | 6-8h | - |
-| 8 | M08 Q&A — widok zespołu (przeglądanie archiwum) | 3-4h | - |
-| 9 | Auth (Better Auth, role: pracownik/kierownik) | 3-4h | - |
-| 10 | Deploy + testy end-to-end | 4-6h | - |
-
-**Łącznie szacowany czas: ~35-47h** przy ~2-3h dziennie to 12-20 dni roboczych. Margines jest, ale nie ma miejsca na skoki w bok.
+| # | Zadanie | Status |
+|---|---------|--------|
+| 1 | Schema Drizzle (units, buildings, sections, floors, projects, questions, tasks) | ✅ DONE |
+| 2 | Import 735 jednostek z DXF do Supabase | ✅ DONE |
+| 3 | Layout dashboardu + nawigacja + sidebar z badge | ✅ DONE |
+| 4 | tRPC router dla units (CRUD + stats) | ✅ DONE |
+| 5 | M01 Mapa Budynku (drill-down, statusy, garaż) | ✅ DONE |
+| 6 | M03 Zadania (tworzenie, zgłaszanie, odbiór, zdjęcia NAS) | ✅ DONE |
+| 7 | M08 Q&A (pytania, odpowiedzi, archiwum, search) | ✅ DONE |
+| 8 | Dashboard per rola + powiadomienia (unread count) | ✅ DONE |
+| 9 | Auth + Admin panel (CRUD users, firma, filtrowanie, sortowanie) | ✅ DONE |
+| 10 | Synology NAS upload (FileStation API, DSM 7) | ✅ DONE |
+| 11 | Dokumenty (karty instalacyjne PDF) | DO ZROBIENIA |
+| 12 | Deploy na Vercel + testy | DO ZROBIENIA |
 
 ---
 

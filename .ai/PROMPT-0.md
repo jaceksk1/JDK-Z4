@@ -110,10 +110,10 @@ JDK Z4/
 - [x] **Admin rozszerzony** — edycja użytkownika (imię, rola, firma), reset hasła, usunięcie z potwierdzeniem; filtrowanie (rola, firma, search), sortowanie kolumn; pole `company` na userze
 
 - [x] **Krok 6 M03 Zadania** — schema tasks (open/submitted/done), tRPC router (create, submit, updateStatus, update, delete, getById, list, stats), strona `/zadania` z filtrami i search, detail sheet, formularz tworzenia (tytuł, opis, jednostka, przypisanie, termin); workflow: manager tworzy → worker zgłasza wykonanie z opisem (submitted) → manager odbiera (done) lub cofa; dashboard ze statystykami zadań
+- [x] **Synology NAS Upload** — klient FileStation API (DSM 7: SynoToken + _sid w URL, nie form body), API route `/api/files` (upload + proxy download), zdjęcia przy zgłoszeniu zadań z podglądem, pliki w `/JDK/JDK-Z4/Zdjecia/zadania/{user}_{task-slug}/`
 
 **Do zrobienia:**
-- [ ] **Dokumenty (karty instalacyjne PDF)** — ODŁOŻONE; do dyskusji opcja A (link zewnętrzny)/B (Supabase Storage)/C (wersjonowanie)
-- [ ] **Zdjęcia do zadań** — upload zdjęć jako dowód wykonania; docelowo Synology NAS, tymczasowo Supabase Storage
+- [ ] **Dokumenty (karty instalacyjne PDF)** — do dyskusji
 - [ ] **Krok 10** — Deploy na Vercel
 
 ---
@@ -175,6 +175,14 @@ type UnitType =
 - `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z picker statusu
 - `~/components/mapa/breadcrumbs.tsx` — nawigacja drill-down
 - `~/components/mapa/status-filter.tsx` — 5 togglowych pigułek
+- `~/components/qa/question-card.tsx` — karta pytania z timeago, status badge
+- `~/components/qa/question-form.tsx` — formularz z pickerem jednostki
+- `~/components/qa/question-detail-sheet.tsx` — szczegóły z odpowiadaniem
+- `~/components/zadania/task-card.tsx` — karta zadania z deadline, przypisanie
+- `~/components/zadania/task-form.tsx` — formularz tworzenia zadania
+- `~/components/zadania/task-detail-sheet.tsx` — szczegóły z zgłoszeniem wykonania + upload zdjęcia
+- `~/components/admin/edit-user-sheet.tsx` — edycja/usuwanie usera + reset hasła
+- `~/lib/synology.ts` — klient Synology FileStation API (server-only)
 
 ---
 
@@ -198,8 +206,8 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Krok 7 → M08 Q&A — pytania, odpowiedzi, zamykanie, archiwum, search
 [✅] Dashboard → Strona główna per rola, powiadomienia (unread count), postęp budowy
 [✅] Krok 6 → M03 Zadania — tworzenie, zgłaszanie wykonania (worker), odbiór (manager)
-[  ] Dokumenty → Karty instalacyjne PDF (opcja A/B/C do wyboru)
-[  ] Zdjęcia → Upload zdjęć do zadań (docelowo Synology NAS)
+[✅] Synology NAS → Upload zdjęć do zadań przez FileStation API (DSM 7)
+[  ] Dokumenty → Karty instalacyjne PDF
 [  ] Krok 10 → Deploy na Vercel
 ```
 
@@ -243,3 +251,13 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 
 **Drizzle — $onUpdateFn:**
 - Przy `mode: "date"` na timestamp, `$onUpdateFn` musi zwracać `new Date()`, NIE `sql\`now()\`` — Drizzle próbuje `.toISOString()` na wartości i pada jeśli dostanie obiekt SQL
+
+**Synology NAS (DS218j, DSM 7.1):**
+- Adres: `http://193.163.149.230:5000` (port forwarding na routerze)
+- Konto API: `admin` (wbudowane konto `jdkapp` nie miało uprawnień do API mimo grupy administrators)
+- Env: `SYNOLOGY_URL`, `SYNOLOGY_USER`, `SYNOLOGY_PASS`, `SYNOLOGY_BASE_PATH=/JDK/JDK-Z4/Zdjecia`
+- **DSM 7 Upload quirk (KRYTYCZNE):** `_sid` NIE MOŻE być w multipart form body razem z plikiem — musi być w URL params. Bez tego error 119.
+- Upload wymaga: `enable_syno_token=yes` przy loginie + header `X-SYNO-TOKEN` na operacjach zapisu
+- Auth endpoint w DSM 7: `entry.cgi` (nie `auth.cgi` jak w DSM 6, choć `auth.cgi` też działa)
+- Polskie znaki w ścieżkach folderów powodują problemy — używaj ASCII (`Zdjecia` nie `Zdjęcia`)
+- Klient: `apps/nextjs/src/lib/synology.ts`, API route: `apps/nextjs/src/app/api/files/route.ts`
