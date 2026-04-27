@@ -1,11 +1,11 @@
 /**
- * Przypisuje cardNumber mieszkaniom wg reguły: natural sort designatora per budynek
- * → numeracja ciągła 1..N przez klatki.
+ * Przypisuje cardNumber mieszkaniom wg reguły: globalny natural sort designatora
+ * → numeracja ciągła 1..N przez OBA budynki (nie per budynek!).
  *
- * Dla Z4: A1 ma 68 mieszkań (A_1..A_68), A2 ma 58 mieszkań (A_69..A_126).
- *         B1 ma 72 mieszkania (B_1..B_72), B2 ma 28 mieszkań (B_73..B_100).
+ * Dla Z4: A: 1..126 (A1: 1..68, A2: 69..126), B: 127..226 (B1: 127..198, B2: 199..226).
  *
- * Plik PDF: ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf
+ * Plik PDF: ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf — litera z designatora,
+ * numer globalny (B startuje od 127).
  * Ścieżka NAS: /JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/
  *
  * Uruchomienie: pnpm db:seed-cards
@@ -36,7 +36,7 @@ function naturalSort(a: string, b: string): number {
 }
 
 async function seed() {
-  console.log("🪪 Przypisuję numery kart mieszkaniom (natural sort per budynek)…");
+  console.log("🪪 Przypisuję numery kart mieszkaniom (globalny natural sort A→B)…");
 
   const apartments = await db.query.units.findMany({
     where: (u, { eq: eqFn }) => eqFn(u.type, "apartment"),
@@ -48,23 +48,33 @@ async function seed() {
     process.exit(0);
   }
 
-  const byBuilding = new Map<"A" | "B", typeof apartments>();
-  for (const a of apartments) {
-    const letter = a.designator.match(/^([AB])/)?.[1] as "A" | "B" | undefined;
-    if (!letter) continue;
-    const arr = byBuilding.get(letter) ?? [];
-    arr.push(a);
-    byBuilding.set(letter, arr);
-  }
+  // Sortowanie globalne: A* przed B*, ciągła numeracja 1..N
+  const sorted = [...apartments].sort((x, y) =>
+    naturalSort(x.designator, y.designator),
+  );
 
   let updated = 0;
-  for (const [letter, list] of byBuilding) {
-    list.sort((x, y) => naturalSort(x.designator, y.designator));
-    console.log(`📦 Budynek ${letter}: ${list.length} mieszkań (${list[0]?.designator} … ${list[list.length - 1]?.designator})`);
-    for (let i = 0; i < list.length; i++) {
-      const apt = list[i]!;
-      const cardNumber = i + 1;
-      if (apt.cardNumber === cardNumber) continue;
+  let firstA: string | undefined;
+  let lastA: string | undefined;
+  let firstB: string | undefined;
+  let lastB: string | undefined;
+  let firstBNum = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const apt = sorted[i]!;
+    const cardNumber = i + 1;
+    const letter = apt.designator[0];
+    if (letter === "A") {
+      firstA ??= apt.designator;
+      lastA = apt.designator;
+    } else if (letter === "B") {
+      if (!firstB) {
+        firstB = apt.designator;
+        firstBNum = cardNumber;
+      }
+      lastB = apt.designator;
+    }
+    if (apt.cardNumber !== cardNumber) {
       await db
         .update(units)
         .set({ cardNumber })
@@ -73,6 +83,8 @@ async function seed() {
     }
   }
 
+  console.log(`📦 Budynek A: ${firstA} … ${lastA}  (1..${firstBNum - 1})`);
+  console.log(`📦 Budynek B: ${firstB} … ${lastB}  (${firstBNum}..${sorted.length})`);
   console.log(`✅ Zaktualizowano ${updated} mieszkań.`);
   process.exit(0);
 }

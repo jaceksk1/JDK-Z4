@@ -114,7 +114,7 @@ JDK Z4/
 - [x] **Etapy prac (stage_templates + unit_stages)** — checklista etapów per typ jednostki (apartment: 6 etapów, commercial: 5, parking: 1, storage: 1); auto-seed szablonów przy pierwszym otwarciu; optimistic updates; auto-sync statusu jednostki z etapów (all done→done, any issue→issue, mix→in_progress); progress bar w detail sheet
 - [x] **Karty instalacyjne LU (PDF)** — podgląd PDF z NAS w detail sheet (split view: PDF na pełną lewą stronę + panel detali po prawej); mapowanie designatora → `ZAS4_MM_AR_INST_{designator}.pdf` z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF/`; link na mobile
 - [x] **Integracja etapy ↔ Q&A** — kliknięcie wykrzyknika przy etapie: oznacza issue + redirect do Q&A z pre-fill (jednostka + nazwa etapu); kierownik przy zamykaniu pytania widzi checkboxy "Usuń problem z etapu" i może zresetować issue stages do pending
-- [x] **Karty instalacyjne mieszkań (PDF)** — pole `cardNumber: integer` na `units`, mutation `unit.updateCardNumber` (manager+), edytowalne pole w detail sheet, split view PDF z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`; seed `pnpm db:seed-cards` wg natural sort per budynek (A1: 1..68, A2: 69..126; B1: 1..72, B2: 73..100)
+- [x] **Karty instalacyjne mieszkań (PDF)** — pole `cardNumber: integer` na `units`, mutation `unit.updateCardNumber` (manager+), edytowalne pole w detail sheet, split view PDF z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`; seed `pnpm db:seed-cards` wg globalnego natural sort A→B (A: 1..126, B: 127..226 — numeracja CIĄGŁA przez oba budynki)
 
 **Do zrobienia:**
 - [ ] **Krok 10** — Deploy na Vercel
@@ -280,7 +280,8 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 
 **Karty mieszkań:**
 - Pole `cardNumber: integer` nullable na `units` — tylko dla apartment
-- Numeracja NIE jest "ostatni segment designatora" — projektant zrobił ciągłą numerację przez klatki per budynek: A1 ma A_1..A_68, A2 ma A_69..A_126, B1 ma B_1..B_72, B2 ma B_73..B_100
-- Seed `pnpm db:seed-cards` robi natural sort designatorów per budynek i numeruje 1..N
+- Numeracja jest CIĄGŁA przez oba budynki (NIE per budynek!): A: 1..126 (A1: 1..68, A2: 69..126), B: 127..226 (B1: 127..198, B2: 199..226)
+- Seed `pnpm db:seed-cards` robi globalny natural sort designatorów (A* przed B*) i numeruje 1..226
+- Litera w nazwie pliku pochodzi z designatora (A/B), numer jest globalny — np. mieszkanie B1.2.1 → `ZAS4_MM_AR_INST_B_127.pdf`
 - Ścieżka: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`
 - Edycja ręczna: manager/admin w detail sheet mieszkania → "Zmień" (wyjątki)
