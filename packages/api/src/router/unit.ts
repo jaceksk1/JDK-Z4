@@ -7,10 +7,23 @@ import {
   unitGetByIdInputSchema,
   unitListInputSchema,
   unitStatsInputSchema,
+  unitUpdateCardNumberInputSchema,
   unitUpdateStatusInputSchema,
 } from "@acme/validators";
 
 import { protectedProcedure } from "../trpc";
+
+/** Tylko kierownik lub admin */
+const managerProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const role = ctx.session.user.role;
+  if (role !== "manager" && role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Tylko kierownik może wykonać tę operację",
+    });
+  }
+  return next({ ctx });
+});
 
 type Ctx = { db: typeof import("@acme/db/client").db };
 
@@ -189,6 +202,7 @@ export const unitRouter = {
           floorLabel: floors.label,
           floorStorey: floors.storey,
           notes: units.notes,
+          cardNumber: units.cardNumber,
           buildingName: buildings.name,
           sectionName: sections.name,
         })
@@ -220,6 +234,7 @@ export const unitRouter = {
           floorLabel: floors.label,
           floorStorey: floors.storey,
           notes: units.notes,
+          cardNumber: units.cardNumber,
           createdAt: units.createdAt,
           updatedAt: units.updatedAt,
           buildingName: buildings.name,
@@ -263,6 +278,35 @@ export const unitRouter = {
         .set({ status: input.status })
         .where(eq(units.id, input.id))
         .returning({ id: units.id, status: units.status });
+
+      return updated;
+    }),
+
+  /** Ustaw/wyczyść numer karty instalacyjnej — manager/admin, tylko apartment */
+  updateCardNumber: managerProcedure
+    .input(unitUpdateCardNumberInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.query.units.findFirst({
+        where: (u, { eq: eqFn }) => eqFn(u.id, input.id),
+      });
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `Jednostka ${input.id} nie istnieje`,
+        });
+      }
+      if (existing.type !== "apartment") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Numer karty dotyczy tylko mieszkań",
+        });
+      }
+
+      const [updated] = await ctx.db
+        .update(units)
+        .set({ cardNumber: input.cardNumber })
+        .where(eq(units.id, input.id))
+        .returning({ id: units.id, cardNumber: units.cardNumber });
 
       return updated;
     }),

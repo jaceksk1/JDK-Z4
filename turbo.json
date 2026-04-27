@@ -48,6 +48,10 @@
       "cache": false,
       "interactive": false
     },
+    "seed-cards": {
+      "cache": false,
+      "interactive": false
+    },
     "studio": {
       "cache": false,
       "persistent": true

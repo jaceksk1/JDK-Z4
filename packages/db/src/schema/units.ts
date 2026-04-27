@@ -44,6 +44,8 @@ export const units = pgTable(
       .uuid()
       .references(() => floors.id, { onDelete: "set null" }),
     status: unitStatusEnum().notNull().default("not_started"),
+    // Numer karty instalacyjnej (ZAS4_MM_AR_INST_A_{cardNumber}.pdf) — tylko dla apartment
+    cardNumber: t.integer(),
     notes: t.text(),
     createdAt: t
       .timestamp({ mode: "date", withTimezone: true })

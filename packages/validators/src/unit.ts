@@ -50,8 +50,16 @@ export const unitUpdateStatusInputSchema = z.object({
   status: unitStatusSchema,
 });
 
+export const unitUpdateCardNumberInputSchema = z.object({
+  id: z.string().uuid(),
+  cardNumber: z.number().int().positive().max(9999).nullable(),
+});
+
 export type UnitStatus = z.infer<typeof unitStatusSchema>;
 export type UnitType = z.infer<typeof unitTypeSchema>;
 export type UnitListInput = z.infer<typeof unitListInputSchema>;
 export type UnitUpdateStatusInput = z.infer<typeof unitUpdateStatusInputSchema>;
+export type UnitUpdateCardNumberInput = z.infer<
+  typeof unitUpdateCardNumberInputSchema
+>;
 export type StatsLevel = z.infer<typeof statsLevelSchema>;

@@ -114,6 +114,7 @@ JDK Z4/
 - [x] **Etapy prac (stage_templates + unit_stages)** — checklista etapów per typ jednostki (apartment: 6 etapów, commercial: 5, parking: 1, storage: 1); auto-seed szablonów przy pierwszym otwarciu; optimistic updates; auto-sync statusu jednostki z etapów (all done→done, any issue→issue, mix→in_progress); progress bar w detail sheet
 - [x] **Karty instalacyjne LU (PDF)** — podgląd PDF z NAS w detail sheet (split view: PDF na pełną lewą stronę + panel detali po prawej); mapowanie designatora → `ZAS4_MM_AR_INST_{designator}.pdf` z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF/`; link na mobile
 - [x] **Integracja etapy ↔ Q&A** — kliknięcie wykrzyknika przy etapie: oznacza issue + redirect do Q&A z pre-fill (jednostka + nazwa etapu); kierownik przy zamykaniu pytania widzi checkboxy "Usuń problem z etapu" i może zresetować issue stages do pending
+- [x] **Karty instalacyjne mieszkań (PDF)** — pole `cardNumber: integer` na `units`, mutation `unit.updateCardNumber` (manager+), edytowalne pole w detail sheet, split view PDF z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`; seed `pnpm db:seed-cards` wg natural sort per budynek (A1: 1..68, A2: 69..126; B1: 1..72, B2: 73..100)
 
 **Do zrobienia:**
 - [ ] **Krok 10** — Deploy na Vercel
@@ -174,7 +175,7 @@ type UnitType =
 - `~/components/unit/status-badge.tsx` — `<StatusBadge status="done" />` + `<StatusDot />`
 - `~/components/mapa/overview-tile.tsx` — kafelek przeglądowy z progress bar + breakdown typów
 - `~/components/mapa/unit-card.tsx` — karta jednostki z krawędzią w kolorze statusu
-- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z checklistą etapów, progress bar, podgląd PDF dla LU (split view)
+- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z checklistą etapów, progress bar, podgląd PDF (split view) dla LU i mieszkań + edycja cardNumber
 - `~/components/mapa/breadcrumbs.tsx` — nawigacja drill-down
 - `~/components/mapa/status-filter.tsx` — 5 togglowych pigułek
 - `~/components/qa/question-card.tsx` — karta pytania z timeago, status badge
@@ -213,6 +214,7 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Etapy prac → stage_templates + unit_stages, checklista per jednostka, auto-sync statusu
 [✅] Karty instalacyjne LU → PDF z NAS w split view detail sheet
 [✅] Integracja etapy ↔ Q&A → zgłaszanie issue z etapu, usuwanie problemu przy zamykaniu Q&A
+[✅] Karty instalacyjne mieszkań → cardNumber na units, seed per budynek, split view PDF
 [  ] Krok 10 → Deploy na Vercel
 ```
 
@@ -233,6 +235,7 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 **Seed:**
 - `pnpm db:seed` — jednostki (idempotentny, skip jeśli projekt Z4 istnieje)
 - `pnpm db:seed-admin` — konto admin (idempotentny, skip jeśli admin istnieje)
+- `pnpm db:seed-cards` — przypisuje cardNumber mieszkaniom (natural sort per budynek, idempotentny)
 - `pnpm db:fix-units` — czyści błędne jednostki (artefakty DWG: `A1.2.24`, `A1.2.30`, `B2.U.28`, `B2.U.29`)
 - Wszystkie używają `tsx` (nie `ts-node`)
 - Parser seed używa wzorca `TM [AB][12].X.Y` jako source of truth — NIE łapie designatorów bez prefiksu TM (często błędne etykiety projektanta)
@@ -272,4 +275,12 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 - Upload wymaga: `enable_syno_token=yes` przy loginie + header `X-SYNO-TOKEN` na operacjach zapisu
 - Auth endpoint w DSM 7: `entry.cgi` (nie `auth.cgi` jak w DSM 6, choć `auth.cgi` też działa)
 - Polskie znaki w ścieżkach folderów powodują problemy — używaj ASCII (`Zdjecia` nie `Zdjęcia`)
+- **Wielkość liter się liczy** — foldery `BUDYNEK A`/`BUDYNEK B` są wielkimi literami (nie `Budynek A`), Synology zwraca 404 przy niezgodności
 - Klient: `apps/nextjs/src/lib/synology.ts`, API route: `apps/nextjs/src/app/api/files/route.ts`
+
+**Karty mieszkań:**
+- Pole `cardNumber: integer` nullable na `units` — tylko dla apartment
+- Numeracja NIE jest "ostatni segment designatora" — projektant zrobił ciągłą numerację przez klatki per budynek: A1 ma A_1..A_68, A2 ma A_69..A_126, B1 ma B_1..B_72, B2 ma B_73..B_100
+- Seed `pnpm db:seed-cards` robi natural sort designatorów per budynek i numeruje 1..N
+- Ścieżka: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`
+- Edycja ręczna: manager/admin w detail sheet mieszkania → "Zmień" (wyjątki)

@@ -6,21 +6,24 @@ import type { StageStatus } from "@acme/validators";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
   Circle,
   FileText,
+  Pencil,
   X,
 } from "lucide-react";
 
 import { cn } from "@acme/ui";
 import { toast } from "@acme/ui/toast";
 
+import { useSession } from "~/auth/client";
 import { StatusBadge } from "~/components/unit/status-badge";
 import { useTRPC } from "~/trpc/react";
 
 const LU_PDF_NAS_PATH =
   "/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF";
+const APT_PDF_NAS_PATH =
+  "/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE";
 
 const TYPE_LABEL = {
   apartment: "Mieszkanie",
@@ -38,6 +41,9 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { data: session } = useSession();
+  const isManager =
+    session?.user?.role === "manager" || session?.user?.role === "admin";
 
   const { data: unit, isLoading } = useQuery({
     ...trpc.unit.getById.queryOptions({ id: unitId ?? "" }),
@@ -79,15 +85,40 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
   );
 
   const [pdfError, setPdfError] = useState(false);
+  const [editingCard, setEditingCard] = useState(false);
+  const [cardDraft, setCardDraft] = useState("");
 
   useEffect(() => {
     setPdfError(false);
+    setEditingCard(false);
+    setCardDraft("");
   }, [unitId]);
 
-  const hasFloorPlan = unit?.type === "commercial" && unit?.designator;
-  const pdfUrl = hasFloorPlan
-    ? `/api/files?path=${encodeURIComponent(`${LU_PDF_NAS_PATH}/ZAS4_MM_AR_INST_${unit.designator}.pdf`)}`
-    : null;
+  const updateCardNumber = useMutation(
+    trpc.unit.updateCardNumber.mutationOptions({
+      onSuccess: () => {
+        toast.success("Numer karty zapisany");
+        setEditingCard(false);
+        void queryClient.invalidateQueries({ queryKey: trpc.unit.pathKey() });
+      },
+      onError: (err) => toast.error("Błąd zapisu", { description: err.message }),
+    }),
+  );
+
+  const buildingLetter = unit?.designator?.match(/^([AB])/)?.[1] ?? null;
+  const apartmentPdfUrl =
+    unit?.type === "apartment" && unit.cardNumber && buildingLetter
+      ? `/api/files?path=${encodeURIComponent(
+          `${APT_PDF_NAS_PATH}/BUDYNEK ${buildingLetter}/PDF/ZAS4_MM_AR_INST_${buildingLetter}_${unit.cardNumber}.pdf`,
+        )}`
+      : null;
+  const commercialPdfUrl =
+    unit?.type === "commercial" && unit.designator
+      ? `/api/files?path=${encodeURIComponent(
+          `${LU_PDF_NAS_PATH}/ZAS4_MM_AR_INST_${unit.designator}.pdf`,
+        )}`
+      : null;
+  const pdfUrl = commercialPdfUrl ?? apartmentPdfUrl;
 
   if (!unitId) return null;
 
@@ -139,6 +170,7 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
               </span>
             </div>
             <iframe
+              key={pdfUrl}
               src={pdfUrl}
               className="flex-1"
               title={`Karta instalacyjna ${unit?.displayDesignator}`}
@@ -226,6 +258,84 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
                     )}
                   </dl>
                 </section>
+
+                {/* Karta instalacyjna — tylko mieszkania */}
+                {unit.type === "apartment" && buildingLetter && (
+                  <section>
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Karta instalacyjna
+                    </h3>
+                    {editingCard ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          ZAS4_MM_AR_INST_{buildingLetter}_
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={9999}
+                          value={cardDraft}
+                          onChange={(e) => setCardDraft(e.target.value)}
+                          placeholder="nr"
+                          className="w-20 rounded-sm border bg-background px-2 py-1 text-sm"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const n = cardDraft.trim()
+                              ? Number(cardDraft)
+                              : null;
+                            if (n !== null && (!Number.isInteger(n) || n < 1)) {
+                              toast.error("Nieprawidłowy numer");
+                              return;
+                            }
+                            updateCardNumber.mutate({
+                              id: unit.id,
+                              cardNumber: n,
+                            });
+                          }}
+                          disabled={updateCardNumber.isPending}
+                          className="rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          Zapisz
+                        </button>
+                        <button
+                          onClick={() => setEditingCard(false)}
+                          className="rounded-sm border px-3 py-1 text-xs hover:bg-accent"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm">
+                          {unit.cardNumber ? (
+                            <span className="font-mono">
+                              ZAS4_MM_AR_INST_{buildingLetter}_
+                              {unit.cardNumber}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground italic">
+                              nieprzypisana
+                            </span>
+                          )}
+                        </span>
+                        {isManager && (
+                          <button
+                            onClick={() => {
+                              setCardDraft(unit.cardNumber?.toString() ?? "");
+                              setEditingCard(true);
+                            }}
+                            className="flex items-center gap-1 rounded-sm border px-2 py-1 text-xs hover:bg-accent"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            {unit.cardNumber ? "Zmień" : "Przypisz"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {/* Status — auto-derived from stages */}
                 <section>
