@@ -54,7 +54,7 @@ Na początku każdej sesji zadaj te pytania w tej kolejności. Nie zaczynaj omaw
 | 8 | Dashboard per rola + powiadomienia (unread count) | ✅ DONE |
 | 9 | Auth + Admin panel (CRUD users, firma, filtrowanie, sortowanie) | ✅ DONE |
 | 10 | Synology NAS upload (FileStation API, DSM 7) | ✅ DONE |
-| 11 | Dokumenty (karty instalacyjne PDF) | DO ZROBIENIA |
+| 11 | Dokumenty (karty instalacyjne PDF — 3 typy: karta/osw/gn, folder per jednostka) | ✅ DONE |
 | 12 | Deploy na Vercel + testy | DO ZROBIENIA |
 
 ---
@@ -230,3 +230,44 @@ Wklej ten plik na początku sesji i napisz: **"Sesja START"**.
 Agent PM zadaje pytania protokołu startowego, ustala plan sesji, pilnuje scope i na końcu wypełnia template podsumowania.
 
 Każda sesja powinna kończyć się aktualizacją tabeli "Kolejność budowy MVP" — zmień status zadań na DONE/IN PROGRESS/BLOCKED.
+
+---
+
+## Podsumowanie sesji 2026-04-27
+
+**Czas trwania:** ~3-4h (długa sesja, dwa duże refaktory)
+
+**Co skończyliśmy:**
+- Karty mieszkań v1 (cardNumber, split-view PDF) — DONE → później refaktor
+- Fix numeracji A→B (seed globalny 1..226 zamiast 1..100 per budynek) — DONE → później refaktor
+- **Karty instalacyjne v2 (cardCode + 3 zakładki PDF + folder per jednostka)** — DONE
+  - Schema: pole `cardCode: text` (`A1.1.5` dla mieszkań, `A1.U.1` dla LU); usunięto stary `cardNumber`
+  - Seed `pnpm db:seed-cards`: lokalna numeracja per piętro (klatka.piętroStorey.nrNaPiętrze) dla 226 mieszkań + cardCode=designator dla 27 LU
+  - Frontend: 3 zakładki Karta/Oświetlenie/Gniazda w detail sheet, edycja cardCode (manager+, regex walidacja)
+  - Numeracja kafelek/breadcrumbs/header używa cardCode (router helper: `row.cardCode ?? displayDesignator(...)`)
+  - tRPC: `unit.updateCardCode` mutation (manager-only, apartment+commercial)
+  - Skrypt jednorazowy: 226 plików `ZAS4_MM_AR_INST_*.pdf` skopiowanych do nowej struktury folderowej na NAS (po weryfikacji można wyczyścić stare)
+  - Naprawa nazw 12 plików (M-prefix removal: `A1.1.M5.osw.pdf` → `A1.1.5.osw.pdf`)
+
+**Co zostało nieukończone:**
+- Stare pliki `ZAS4_MM_AR_INST_*.pdf` na NAS w `BUDYNEK A/PDF/` i `BUDYNEK B/PDF/` — do ręcznego wyczyszczenia po weryfikacji nowych
+- Krok 12 — Deploy na Vercel (planowany na osobną sesję)
+
+**Decyzje podjęte dziś:**
+- Decyzja: **cardCode = klatka.piętro.lokalNaPiętrze** (nie globalna numeracja per budynek). Powód: oryginalny pomysł z cardNumber 1..226 był mylący — projektant numeruje globalnie ale user myśli lokalnie. cardCode jest self-explanatory.
+- Decyzja: **Folder per jednostka, nie suffix `_v2/v3`**. Powód: 3 zakładki to różne typy dokumentów (karta instalacji / wymiary oświetlenia / wymiary gniazd), nie wersje tego samego.
+- Decyzja: **Nazwa pliku BEZ prefiksu "M"**. Powód: cardCode w bazie jest bez M; krótsze nazwy.
+- Decyzja: **Usunięto cardNumber całkowicie**. Powód: po migracji do cardCode jest niepotrzebny i mylący.
+
+**Blokery zidentyfikowane:** brak.
+
+**Plan na następną sesję:**
+1. **Krok 12 — Deploy na Vercel** (jedyne otwarte zadanie MVP)
+2. Test PWA install na 2 telefonach
+3. Wyczyść stare pliki z NAS (manualnie przez Synology web UI)
+
+**Ocena tempa (1-5):** 5/5 — wyprzedzeni o ~1.5 tygodnia. Krok 11 zrobiony przed czasem, mimo że rozrósł się w stosunku do bazowego planu (3 typy dokumentów + struktura folderowa zamiast jednego PDF).
+
+**Komentarz do deadline 12 maja:** **Bardzo dobra pozycja.** Zostało 15 dni roboczych do deadline, jedyne zadanie to deploy. Margines bezpieczeństwa ~10 dni. **Od teraz zero nowych funkcji aż do deploy** — feature freeze.
+
+**Uwaga scope:** Dziś krok 11 rozrósł się znacznie (3 typy PDF + struktura folderowa + migracja NAS) względem oryginalnego "Dokumenty PDF". Było uzasadnione realnymi potrzebami projektowymi (wymiary oświetlenia/gniazd osobno). Następnym razem przy podobnym rozroście — **podzielić na dwa kroki** żeby tabela MVP nie kłamała.

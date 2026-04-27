@@ -50,16 +50,21 @@ export const unitUpdateStatusInputSchema = z.object({
   status: unitStatusSchema,
 });
 
-export const unitUpdateCardNumberInputSchema = z.object({
+// Format: A1.1.5 (klatka.piętro.numer) lub A1.U.1 (LU)
+const cardCodeRegex = /^[AB][12]\.(?:U|\d+)\.\d+$/;
+export const unitUpdateCardCodeInputSchema = z.object({
   id: z.string().uuid(),
-  cardNumber: z.number().int().positive().max(9999).nullable(),
+  cardCode: z
+    .string()
+    .regex(cardCodeRegex, "Format: A1.1.5 lub A1.U.1")
+    .nullable(),
 });
 
 export type UnitStatus = z.infer<typeof unitStatusSchema>;
 export type UnitType = z.infer<typeof unitTypeSchema>;
 export type UnitListInput = z.infer<typeof unitListInputSchema>;
 export type UnitUpdateStatusInput = z.infer<typeof unitUpdateStatusInputSchema>;
-export type UnitUpdateCardNumberInput = z.infer<
-  typeof unitUpdateCardNumberInputSchema
+export type UnitUpdateCardCodeInput = z.infer<
+  typeof unitUpdateCardCodeInputSchema
 >;
 export type StatsLevel = z.infer<typeof statsLevelSchema>;

@@ -20,8 +20,6 @@ import { useSession } from "~/auth/client";
 import { StatusBadge } from "~/components/unit/status-badge";
 import { useTRPC } from "~/trpc/react";
 
-const LU_PDF_NAS_PATH =
-  "/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF";
 const APT_PDF_NAS_PATH =
   "/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE";
 
@@ -31,6 +29,13 @@ const TYPE_LABEL = {
   parking: "Miejsce parkingowe",
   storage: "Komórka lokatorska",
 } as const;
+
+type CardTab = "karta" | "osw" | "gn";
+const TAB_LABELS: Record<CardTab, string> = {
+  karta: "Karta",
+  osw: "Oświetlenie",
+  gn: "Gniazda",
+};
 
 interface UnitDetailSheetProps {
   unitId: string | null;
@@ -84,20 +89,20 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
     }),
   );
 
-  const [pdfError, setPdfError] = useState(false);
+  const [activeTab, setActiveTab] = useState<CardTab>("karta");
   const [editingCard, setEditingCard] = useState(false);
   const [cardDraft, setCardDraft] = useState("");
 
   useEffect(() => {
-    setPdfError(false);
+    setActiveTab("karta");
     setEditingCard(false);
     setCardDraft("");
   }, [unitId]);
 
-  const updateCardNumber = useMutation(
-    trpc.unit.updateCardNumber.mutationOptions({
+  const updateCardCode = useMutation(
+    trpc.unit.updateCardCode.mutationOptions({
       onSuccess: () => {
-        toast.success("Numer karty zapisany");
+        toast.success("Kod karty zapisany");
         setEditingCard(false);
         void queryClient.invalidateQueries({ queryKey: trpc.unit.pathKey() });
       },
@@ -106,19 +111,15 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
   );
 
   const buildingLetter = unit?.designator?.match(/^([AB])/)?.[1] ?? null;
-  const apartmentPdfUrl =
-    unit?.type === "apartment" && unit.cardNumber && buildingLetter
-      ? `/api/files?path=${encodeURIComponent(
-          `${APT_PDF_NAS_PATH}/BUDYNEK ${buildingLetter}/PDF/ZAS4_MM_AR_INST_${buildingLetter}_${unit.cardNumber}.pdf`,
-        )}`
-      : null;
-  const commercialPdfUrl =
-    unit?.type === "commercial" && unit.designator
-      ? `/api/files?path=${encodeURIComponent(
-          `${LU_PDF_NAS_PATH}/ZAS4_MM_AR_INST_${unit.designator}.pdf`,
-        )}`
-      : null;
-  const pdfUrl = commercialPdfUrl ?? apartmentPdfUrl;
+  const hasCard =
+    (unit?.type === "apartment" || unit?.type === "commercial") &&
+    !!unit.cardCode &&
+    !!buildingLetter;
+  const pdfUrl = hasCard
+    ? `/api/files?path=${encodeURIComponent(
+        `${APT_PDF_NAS_PATH}/BUDYNEK ${buildingLetter}/PDF/${unit.cardCode}/${unit.cardCode}.${activeTab}.pdf`,
+      )}`
+    : null;
 
   if (!unitId) return null;
 
@@ -157,24 +158,37 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
       <aside
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex border-l bg-card shadow-2xl",
-          pdfUrl && !pdfError ? "w-full" : "w-full max-w-md",
+          pdfUrl ? "w-full" : "w-full max-w-md",
         )}
       >
-        {/* PDF panel (left side, takes all remaining space) — only for LU */}
-        {pdfUrl && !pdfError && (
+        {/* PDF panel z zakładkami (Karta / Oświetlenie / Gniazda) */}
+        {pdfUrl && (
           <div className="hidden md:flex flex-1 min-w-0 flex-col border-r bg-muted/20">
-            <div className="flex items-center gap-2 border-b px-4 py-3">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">
-                Karta instalacyjna
+            <div className="flex items-center gap-1 border-b px-3 py-2">
+              <FileText className="h-4 w-4 text-muted-foreground mr-2" />
+              {(["karta", "osw", "gn"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "rounded-sm px-3 py-1.5 text-xs font-medium transition-colors",
+                    activeTab === tab
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  {TAB_LABELS[tab]}
+                </button>
+              ))}
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                {unit?.cardCode}.{activeTab}.pdf
               </span>
             </div>
             <iframe
               key={pdfUrl}
               src={pdfUrl}
               className="flex-1"
-              title={`Karta instalacyjna ${unit?.displayDesignator}`}
-              onError={() => setPdfError(true)}
+              title={`${TAB_LABELS[activeTab]} ${unit?.cardCode}`}
             />
           </div>
         )}
@@ -183,9 +197,7 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
         <div
           className={cn(
             "flex flex-col",
-            pdfUrl && !pdfError
-              ? "w-full max-w-md shrink-0"
-              : "flex-1",
+            pdfUrl ? "w-full max-w-md shrink-0" : "flex-1",
           )}
         >
           <header className="flex items-start justify-between border-b p-5">
@@ -217,19 +229,24 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             {unit && (
               <>
-                {/* PDF link for mobile (no split view) */}
-                {pdfUrl && (
-                  <a
-                    href={pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-sm border p-3 text-sm hover:bg-accent transition-colors md:hidden"
-                  >
-                    <FileText className="h-4 w-4 text-primary" />
-                    <span className="font-medium">
-                      Otwórz kartę instalacyjną
-                    </span>
-                  </a>
+                {/* PDF links for mobile (no split view) */}
+                {hasCard && unit.cardCode && buildingLetter && (
+                  <div className="flex flex-col gap-1.5 md:hidden">
+                    {(["karta", "osw", "gn"] as const).map((tab) => (
+                      <a
+                        key={tab}
+                        href={`/api/files?path=${encodeURIComponent(
+                          `${APT_PDF_NAS_PATH}/BUDYNEK ${buildingLetter}/PDF/${unit.cardCode}/${unit.cardCode}.${tab}.pdf`,
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-sm border p-3 text-sm hover:bg-accent transition-colors"
+                      >
+                        <FileText className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{TAB_LABELS[tab]}</span>
+                      </a>
+                    ))}
+                  </div>
                 )}
 
                 {/* Lokalizacja */}
@@ -259,42 +276,36 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
                   </dl>
                 </section>
 
-                {/* Karta instalacyjna — tylko mieszkania */}
-                {unit.type === "apartment" && buildingLetter && (
+                {/* Kod karty — mieszkania i lokale */}
+                {(unit.type === "apartment" || unit.type === "commercial") && (
                   <section>
                     <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Karta instalacyjna
+                      Kod karty
                     </h3>
                     {editingCard ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">
-                          ZAS4_MM_AR_INST_{buildingLetter}_
-                        </span>
                         <input
-                          type="number"
-                          min={1}
-                          max={9999}
+                          type="text"
                           value={cardDraft}
                           onChange={(e) => setCardDraft(e.target.value)}
-                          placeholder="nr"
-                          className="w-20 rounded-sm border bg-background px-2 py-1 text-sm"
+                          placeholder="A1.1.5"
+                          className="w-32 rounded-sm border bg-background px-2 py-1 font-mono text-sm"
                           autoFocus
                         />
                         <button
                           onClick={() => {
-                            const n = cardDraft.trim()
-                              ? Number(cardDraft)
-                              : null;
-                            if (n !== null && (!Number.isInteger(n) || n < 1)) {
-                              toast.error("Nieprawidłowy numer");
+                            const v = cardDraft.trim();
+                            const code = v ? v : null;
+                            if (
+                              code !== null &&
+                              !/^[AB][12]\.(?:U|\d+)\.\d+$/.test(code)
+                            ) {
+                              toast.error("Format: A1.1.5 lub A1.U.1");
                               return;
                             }
-                            updateCardNumber.mutate({
-                              id: unit.id,
-                              cardNumber: n,
-                            });
+                            updateCardCode.mutate({ id: unit.id, cardCode: code });
                           }}
-                          disabled={updateCardNumber.isPending}
+                          disabled={updateCardCode.isPending}
                           className="rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                         >
                           Zapisz
@@ -309,27 +320,24 @@ export function UnitDetailSheet({ unitId, onClose }: UnitDetailSheetProps) {
                     ) : (
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm">
-                          {unit.cardNumber ? (
-                            <span className="font-mono">
-                              ZAS4_MM_AR_INST_{buildingLetter}_
-                              {unit.cardNumber}
-                            </span>
+                          {unit.cardCode ? (
+                            <span className="font-mono">{unit.cardCode}</span>
                           ) : (
                             <span className="text-muted-foreground italic">
-                              nieprzypisana
+                              nieprzypisany
                             </span>
                           )}
                         </span>
                         {isManager && (
                           <button
                             onClick={() => {
-                              setCardDraft(unit.cardNumber?.toString() ?? "");
+                              setCardDraft(unit.cardCode ?? "");
                               setEditingCard(true);
                             }}
                             className="flex items-center gap-1 rounded-sm border px-2 py-1 text-xs hover:bg-accent"
                           >
                             <Pencil className="h-3 w-3" />
-                            {unit.cardNumber ? "Zmień" : "Przypisz"}
+                            {unit.cardCode ? "Zmień" : "Przypisz"}
                           </button>
                         )}
                       </div>

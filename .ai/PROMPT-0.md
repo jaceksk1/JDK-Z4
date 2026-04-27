@@ -114,7 +114,7 @@ JDK Z4/
 - [x] **Etapy prac (stage_templates + unit_stages)** — checklista etapów per typ jednostki (apartment: 6 etapów, commercial: 5, parking: 1, storage: 1); auto-seed szablonów przy pierwszym otwarciu; optimistic updates; auto-sync statusu jednostki z etapów (all done→done, any issue→issue, mix→in_progress); progress bar w detail sheet
 - [x] **Karty instalacyjne LU (PDF)** — podgląd PDF z NAS w detail sheet (split view: PDF na pełną lewą stronę + panel detali po prawej); mapowanie designatora → `ZAS4_MM_AR_INST_{designator}.pdf` z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/5. KARTY INSTALACYJNE LU/PDF/`; link na mobile
 - [x] **Integracja etapy ↔ Q&A** — kliknięcie wykrzyknika przy etapie: oznacza issue + redirect do Q&A z pre-fill (jednostka + nazwa etapu); kierownik przy zamykaniu pytania widzi checkboxy "Usuń problem z etapu" i może zresetować issue stages do pending
-- [x] **Karty instalacyjne mieszkań (PDF)** — pole `cardNumber: integer` na `units`, mutation `unit.updateCardNumber` (manager+), edytowalne pole w detail sheet, split view PDF z `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`; seed `pnpm db:seed-cards` wg globalnego natural sort A→B (A: 1..126, B: 127..226 — numeracja CIĄGŁA przez oba budynki)
+- [x] **Karty instalacyjne mieszkań i LU (PDF, 3 typy)** — pole `cardCode: text` na `units` (np. `A1.1.5` dla mieszkań, `A1.U.1` dla LU); seed `pnpm db:seed-cards` (klatka.piętro.lokalNaPiętrze dla mieszkań, designator dla LU); 3 zakładki w detail sheet: **Karta** / **Oświetlenie** / **Gniazda**; ścieżka NAS: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/{cardCode}/{cardCode}.{karta|osw|gn}.pdf`; numeracja kafelek/breadcrumbs używa cardCode (lokalna na piętrze) zamiast designatora globalnego; mutation `unit.updateCardCode` (manager+) z walidacją regex
 
 **Do zrobienia:**
 - [ ] **Krok 10** — Deploy na Vercel
@@ -175,7 +175,7 @@ type UnitType =
 - `~/components/unit/status-badge.tsx` — `<StatusBadge status="done" />` + `<StatusDot />`
 - `~/components/mapa/overview-tile.tsx` — kafelek przeglądowy z progress bar + breakdown typów
 - `~/components/mapa/unit-card.tsx` — karta jednostki z krawędzią w kolorze statusu
-- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z checklistą etapów, progress bar, podgląd PDF (split view) dla LU i mieszkań + edycja cardNumber
+- `~/components/mapa/unit-detail-sheet.tsx` — panel szczegółów z checklistą etapów, progress bar, 3 zakładki PDF (Karta/Oświetlenie/Gniazda) + edycja cardCode
 - `~/components/mapa/breadcrumbs.tsx` — nawigacja drill-down
 - `~/components/mapa/status-filter.tsx` — 5 togglowych pigułek
 - `~/components/qa/question-card.tsx` — karta pytania z timeago, status badge
@@ -214,7 +214,7 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Etapy prac → stage_templates + unit_stages, checklista per jednostka, auto-sync statusu
 [✅] Karty instalacyjne LU → PDF z NAS w split view detail sheet
 [✅] Integracja etapy ↔ Q&A → zgłaszanie issue z etapu, usuwanie problemu przy zamykaniu Q&A
-[✅] Karty instalacyjne mieszkań → cardNumber na units, seed per budynek, split view PDF
+[✅] Karty instalacyjne mieszkań i LU → cardCode (A1.1.5 / A1.U.1), 3 zakładki PDF (karta/osw/gn), folder per jednostka
 [  ] Krok 10 → Deploy na Vercel
 ```
 
@@ -278,10 +278,13 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 - **Wielkość liter się liczy** — foldery `BUDYNEK A`/`BUDYNEK B` są wielkimi literami (nie `Budynek A`), Synology zwraca 404 przy niezgodności
 - Klient: `apps/nextjs/src/lib/synology.ts`, API route: `apps/nextjs/src/app/api/files/route.ts`
 
-**Karty mieszkań:**
-- Pole `cardNumber: integer` nullable na `units` — tylko dla apartment
-- Numeracja jest CIĄGŁA przez oba budynki (NIE per budynek!): A: 1..126 (A1: 1..68, A2: 69..126), B: 127..226 (B1: 127..198, B2: 199..226)
-- Seed `pnpm db:seed-cards` robi globalny natural sort designatorów (A* przed B*) i numeruje 1..226
-- Litera w nazwie pliku pochodzi z designatora (A/B), numer jest globalny — np. mieszkanie B1.2.1 → `ZAS4_MM_AR_INST_B_127.pdf`
-- Ścieżka: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf`
-- Edycja ręczna: manager/admin w detail sheet mieszkania → "Zmień" (wyjątki)
+**Karty mieszkań i LU (PDF):**
+- Pole `cardCode: text` nullable na `units` — dla apartment i commercial
+- Format: `{klatka}.{piętroDisplay}.{nrLokalnyNaPiętrze}` dla mieszkań (np. `A1.1.5`), `designator` dla LU (np. `A1.U.1`)
+- Seed `pnpm db:seed-cards`: dla mieszkań grupuje po (klatka, floor.storey), sortuje natural po designatorze, numeruje 1..N lokalnie; dla LU cardCode = designator
+- Rozkład pięter: A1: 1-6 (12,12,12,12,12,8); A2: 1-5 (10,12,12,12,12); B1: 1-6 (13,12,12,14,14,7); B2: 1-3 (9,12,7)
+- Struktura na NAS: folder per jednostka, 3 typy plików: `{cardCode}.karta.pdf`, `{cardCode}.osw.pdf`, `{cardCode}.gn.pdf`
+- Pełna ścieżka: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/{cardCode}/{cardCode}.{karta|osw|gn}.pdf`
+- WAŻNE — nazwy plików BEZ prefiksu "M": `A1.1.5.osw.pdf` (NIE `A1.1.M5.osw.pdf`)
+- Numeracja kafelek/breadcrumbs/header używa cardCode (lokalna na piętrze) zamiast designatora globalnego — w `displayDesignator` helperze tRPC (`row.cardCode ?? displayDesignator(...)`)
+- Edycja ręczna: manager/admin w detail sheet → "Zmień" cardCode (regex walidacja: `^[AB][12]\.(?:U|\d+)\.\d+$`)

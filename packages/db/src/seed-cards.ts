@@ -1,21 +1,24 @@
 /**
- * Przypisuje cardNumber mieszkaniom wg reguły: globalny natural sort designatora
- * → numeracja ciągła 1..N przez OBA budynki (nie per budynek!).
+ * Przypisuje cardCode mieszkaniom i lokalom (commercial).
  *
- * Dla Z4: A: 1..126 (A1: 1..68, A2: 69..126), B: 127..226 (B1: 127..198, B2: 199..226).
+ * Format:
+ *   - apartment: {klatka}.{piętroDisplay}.{nrLokalnyNaPiętrze}  np. "A1.1.5"
+ *     (piętroDisplay = floor.storey, klatka A1/A2/B1/B2 z designatora)
+ *   - commercial: cardCode = designator (np. "A1.U.1") — bez przeliczania
  *
- * Plik PDF: ZAS4_MM_AR_INST_{A|B}_{cardNumber}.pdf — litera z designatora,
- * numer globalny (B startuje od 127).
- * Ścieżka NAS: /JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/
+ * Ranking lokalny: dla mieszkań na danym piętrze klatki sortuje natural
+ * po designatorze i numeruje 1..N.
+ *
+ * Folder na NAS: BUDYNEK X/PDF/{cardCode}/{cardCode}.{karta|osw|gn}.pdf
  *
  * Uruchomienie: pnpm db:seed-cards
- * Idempotentny — nadpisuje istniejące wartości.
+ * Idempotentny — nadpisuje istniejące cardCode.
  */
 
 import { eq } from "drizzle-orm";
 
 import { db } from "./client";
-import { units } from "./schema";
+import { floors, units } from "./schema";
 
 function naturalSort(a: string, b: string): number {
   const pa = a.split(/(\d+)/);
@@ -36,56 +39,75 @@ function naturalSort(a: string, b: string): number {
 }
 
 async function seed() {
-  console.log("🪪 Przypisuję numery kart mieszkaniom (globalny natural sort A→B)…");
+  console.log("🪪 Przypisuję cardCode (apartment + commercial)…");
 
-  const apartments = await db.query.units.findMany({
-    where: (u, { eq: eqFn }) => eqFn(u.type, "apartment"),
-    columns: { id: true, designator: true, cardNumber: true },
-  });
-
-  if (apartments.length === 0) {
-    console.log("⚠️  Brak mieszkań w bazie — nic do zrobienia.");
-    process.exit(0);
-  }
-
-  // Sortowanie globalne: A* przed B*, ciągła numeracja 1..N
-  const sorted = [...apartments].sort((x, y) =>
-    naturalSort(x.designator, y.designator),
-  );
+  const rows = await db
+    .select({
+      id: units.id,
+      designator: units.designator,
+      type: units.type,
+      cardCode: units.cardCode,
+      storey: floors.storey,
+    })
+    .from(units)
+    .leftJoin(floors, eq(units.floorId, floors.id));
 
   let updated = 0;
-  let firstA: string | undefined;
-  let lastA: string | undefined;
-  let firstB: string | undefined;
-  let lastB: string | undefined;
-  let firstBNum = 0;
 
-  for (let i = 0; i < sorted.length; i++) {
-    const apt = sorted[i]!;
-    const cardNumber = i + 1;
-    const letter = apt.designator[0];
-    if (letter === "A") {
-      firstA ??= apt.designator;
-      lastA = apt.designator;
-    } else if (letter === "B") {
-      if (!firstB) {
-        firstB = apt.designator;
-        firstBNum = cardNumber;
-      }
-      lastB = apt.designator;
+  // ─── COMMERCIAL: cardCode = designator ──────────────────────────────────
+  const commercials = rows.filter((u) => u.type === "commercial");
+  for (const lu of commercials) {
+    if (lu.cardCode === lu.designator) continue;
+    await db
+      .update(units)
+      .set({ cardCode: lu.designator })
+      .where(eq(units.id, lu.id));
+    updated++;
+  }
+  console.log(
+    `📦 Commercial (LU): ${commercials.length} sztuk → cardCode = designator`,
+  );
+
+  // ─── APARTMENT: klatka.piętroDisplay.nrLokalny ──────────────────────────
+  const apartments = rows.filter((u) => u.type === "apartment");
+
+  // Grupuj po (klatka, piętroDisplay)
+  const groups = new Map<string, typeof apartments>();
+  for (const a of apartments) {
+    const m = a.designator.match(/^([AB][12])\.\d+\.\d+$/);
+    if (!m) {
+      console.warn(`⚠️  Pomijam ${a.designator} — niepasujący format`);
+      continue;
     }
-    if (apt.cardNumber !== cardNumber) {
-      await db
-        .update(units)
-        .set({ cardNumber })
-        .where(eq(units.id, apt.id));
+    const klatka = m[1]!;
+    const storey = a.storey;
+    if (storey === null || storey < 1) {
+      console.warn(
+        `⚠️  Pomijam ${a.designator} — brak/niepoprawny storey (${storey})`,
+      );
+      continue;
+    }
+    const key = `${klatka}.${storey}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(a);
+    groups.set(key, arr);
+  }
+
+  const sortedGroupKeys = [...groups.keys()].sort(naturalSort);
+  for (const key of sortedGroupKeys) {
+    const list = groups.get(key)!;
+    list.sort((x, y) => naturalSort(x.designator, y.designator));
+    console.log(`   ${key}: ${list.length} mieszkań`);
+    for (let i = 0; i < list.length; i++) {
+      const apt = list[i]!;
+      const cardCode = `${key}.${i + 1}`;
+      if (apt.cardCode === cardCode) continue;
+      await db.update(units).set({ cardCode }).where(eq(units.id, apt.id));
       updated++;
     }
   }
 
-  console.log(`📦 Budynek A: ${firstA} … ${lastA}  (1..${firstBNum - 1})`);
-  console.log(`📦 Budynek B: ${firstB} … ${lastB}  (${firstBNum}..${sorted.length})`);
-  console.log(`✅ Zaktualizowano ${updated} mieszkań.`);
+  console.log(`\n✅ Zaktualizowano ${updated} jednostek (cardCode).`);
   process.exit(0);
 }
 

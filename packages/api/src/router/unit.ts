@@ -7,7 +7,7 @@ import {
   unitGetByIdInputSchema,
   unitListInputSchema,
   unitStatsInputSchema,
-  unitUpdateCardNumberInputSchema,
+  unitUpdateCardCodeInputSchema,
   unitUpdateStatusInputSchema,
 } from "@acme/validators";
 
@@ -202,7 +202,7 @@ export const unitRouter = {
           floorLabel: floors.label,
           floorStorey: floors.storey,
           notes: units.notes,
-          cardNumber: units.cardNumber,
+          cardCode: units.cardCode,
           buildingName: buildings.name,
           sectionName: sections.name,
         })
@@ -216,7 +216,8 @@ export const unitRouter = {
       return rows
         .map((r) => ({
           ...r,
-          displayDesignator: displayDesignator(r.designator, r.floorStorey),
+          displayDesignator:
+            r.cardCode ?? displayDesignator(r.designator, r.floorStorey),
         }))
         .sort((a, b) => naturalSort(a.displayDesignator, b.displayDesignator));
     }),
@@ -234,7 +235,7 @@ export const unitRouter = {
           floorLabel: floors.label,
           floorStorey: floors.storey,
           notes: units.notes,
-          cardNumber: units.cardNumber,
+          cardCode: units.cardCode,
           createdAt: units.createdAt,
           updatedAt: units.updatedAt,
           buildingName: buildings.name,
@@ -256,7 +257,8 @@ export const unitRouter = {
       }
       return {
         ...row,
-        displayDesignator: displayDesignator(row.designator, row.floorStorey),
+        displayDesignator:
+          row.cardCode ?? displayDesignator(row.designator, row.floorStorey),
       };
     }),
 
@@ -282,9 +284,9 @@ export const unitRouter = {
       return updated;
     }),
 
-  /** Ustaw/wyczyść numer karty instalacyjnej — manager/admin, tylko apartment */
-  updateCardNumber: managerProcedure
-    .input(unitUpdateCardNumberInputSchema)
+  /** Ustaw/wyczyść kod karty (np. A1.1.5) — manager/admin, tylko apartment/commercial */
+  updateCardCode: managerProcedure
+    .input(unitUpdateCardCodeInputSchema)
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.query.units.findFirst({
         where: (u, { eq: eqFn }) => eqFn(u.id, input.id),
@@ -295,18 +297,18 @@ export const unitRouter = {
           message: `Jednostka ${input.id} nie istnieje`,
         });
       }
-      if (existing.type !== "apartment") {
+      if (existing.type !== "apartment" && existing.type !== "commercial") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Numer karty dotyczy tylko mieszkań",
+          message: "Kod karty dotyczy tylko mieszkań i lokali",
         });
       }
 
       const [updated] = await ctx.db
         .update(units)
-        .set({ cardNumber: input.cardNumber })
+        .set({ cardCode: input.cardCode })
         .where(eq(units.id, input.id))
-        .returning({ id: units.id, cardNumber: units.cardNumber });
+        .returning({ id: units.id, cardCode: units.cardCode });
 
       return updated;
     }),
