@@ -19,10 +19,10 @@ const config = {
   /** We already do linting and typechecking as separate tasks in CI */
   typescript: { ignoreBuildErrors: true },
 
-  /** Allow Server Actions from dev tunnels and other origins */
+  /** Allow Server Actions from dev tunnels and Vercel */
   experimental: {
     serverActions: {
-      allowedOrigins: ["*.devtunnels.ms"],
+      allowedOrigins: ["*.devtunnels.ms", "*.vercel.app", "app.jdkasprzak.pl"],
     },
   },
 };

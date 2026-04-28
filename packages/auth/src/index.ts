@@ -33,6 +33,8 @@ export function initAuth<
       "http://localhost:3002",
       "expo://",
       "https://*.devtunnels.ms",
+      "https://*.vercel.app",
+      "https://app.jdkasprzak.pl",
     ],
     plugins: [
       username(),

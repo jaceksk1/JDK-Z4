@@ -40,4 +40,13 @@ export const env = createEnv({
   },
   skipValidation:
     !!process.env.CI || process.env.npm_lifecycle_event === "lint",
+  onValidationError: (issues) => {
+    console.error(
+      "❌ Invalid environment variables:",
+      JSON.stringify(issues, null, 2),
+    );
+    throw new Error(
+      `Invalid environment variables: ${JSON.stringify(issues)}`,
+    );
+  },
 });
