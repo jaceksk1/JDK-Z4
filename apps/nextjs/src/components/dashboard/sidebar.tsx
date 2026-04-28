@@ -2,10 +2,14 @@
 
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ChevronRight,
+  FileSearch,
+  FolderOpen,
+  FolderTree,
   Home,
   LayoutGrid,
   ListChecks,
@@ -32,78 +36,240 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 interface NavItem {
-  href: string;
+  href?: string;
   label: string;
-  badge: string;
+  badge?: string;
   icon: LucideIcon;
   showUnread?: boolean;
   adminOnly?: boolean;
+  children?: NavItem[];
+  /** Aktywny tylko gdy searchParams[key] === value (null = brak parametru). */
+  matchSearch?: { key: string; value: string | null };
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", badge: "", icon: Home, showUnread: true },
-  { href: "/mapa", label: "Mapa Budynku", badge: "M01", icon: LayoutGrid },
-  { href: "/zadania", label: "Zadania", badge: "M03", icon: ListChecks },
-  { href: "/qa", label: "Q&A", badge: "M08", icon: MessageSquare, showUnread: true },
-  { href: "/admin/users", label: "Użytkownicy", badge: "ADM", icon: Users, adminOnly: true },
+  { href: "/dashboard", label: "Dashboard", icon: Home, showUnread: true },
+  {
+    label: "Projekt",
+    icon: FolderOpen,
+    children: [
+      {
+        href: "/mapa",
+        label: "Mapa",
+        icon: LayoutGrid,
+        matchSearch: { key: "tab", value: null },
+      },
+      {
+        href: "/mapa?tab=files",
+        label: "Pliki",
+        icon: FolderTree,
+        matchSearch: { key: "tab", value: "files" },
+      },
+    ],
+  },
+  { href: "/zadania", label: "Zadania", icon: ListChecks },
+  { href: "/qa", label: "Q&A", icon: MessageSquare, showUnread: true },
+  { href: "/admin/users", label: "Użytkownicy", icon: Users, adminOnly: true },
+  { href: "/admin/drawings", label: "Indeks rysunków", icon: FileSearch, adminOnly: true },
 ] as const;
+
+function isItemActive(
+  item: NavItem,
+  pathname: string,
+  tab: string | null,
+): boolean {
+  if (item.children) {
+    return item.children.some((c) => isItemActive(c, pathname, tab));
+  }
+  if (!item.href) return false;
+  const itemPath = item.href.split("?")[0]!;
+  const pathMatch =
+    pathname === itemPath ||
+    (itemPath !== "/dashboard" && pathname.startsWith(itemPath));
+  if (!pathMatch) return false;
+  if (item.matchSearch) {
+    return tab === item.matchSearch.value;
+  }
+  return true;
+}
 
 interface NavLinksProps {
   pathname: string;
+  tab: string | null;
   onNavigate?: () => void;
   unreadCount: number;
   userRole: string;
 }
 
-function NavLinks({ pathname, onNavigate, unreadCount, userRole }: NavLinksProps) {
+function NavLinks({
+  pathname,
+  tab,
+  onNavigate,
+  unreadCount,
+  userRole,
+}: NavLinksProps) {
   return (
     <nav className="flex flex-col gap-0.5 px-3">
       {NAV_ITEMS.map((item) => {
         if (item.adminOnly && userRole !== "admin") return null;
-        const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-        const Icon = item.icon;
-        const showBadgeCount = item.showUnread && unreadCount > 0;
+        if (item.children) {
+          return (
+            <NavGroup
+              key={item.label}
+              item={item}
+              pathname={pathname}
+              tab={tab}
+              onNavigate={onNavigate}
+            />
+          );
+        }
         return (
-          <Link
+          <NavLeaf
             key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            className={cn(
-              "group flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors",
-              isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-            <span className="flex-1">{item.label}</span>
-            {showBadgeCount ? (
-              <span
-                className={cn(
-                  "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
-                  isActive
-                    ? "bg-primary-foreground text-primary"
-                    : "bg-primary text-primary-foreground",
-                )}
-              >
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            ) : item.badge ? (
-              <span
-                className={cn(
-                  "rounded-sm px-1.5 py-0.5 text-[10px] font-mono font-semibold",
-                  isActive
-                    ? "bg-primary-foreground/15 text-primary-foreground"
-                    : "bg-muted/50 text-muted-foreground",
-                )}
-              >
-                {item.badge}
-              </span>
-            ) : null}
-          </Link>
+            item={item}
+            pathname={pathname}
+            tab={tab}
+            onNavigate={onNavigate}
+            unreadCount={unreadCount}
+          />
         );
       })}
     </nav>
+  );
+}
+
+function NavLeaf({
+  item,
+  pathname,
+  tab,
+  onNavigate,
+  unreadCount,
+  isChild = false,
+}: {
+  item: NavItem;
+  pathname: string;
+  tab: string | null;
+  onNavigate?: () => void;
+  unreadCount: number;
+  isChild?: boolean;
+}) {
+  const isActive = isItemActive(item, pathname, tab);
+  const Icon = item.icon;
+  const showBadgeCount = item.showUnread && unreadCount > 0;
+
+  return (
+    <Link
+      href={item.href!}
+      onClick={onNavigate}
+      className={cn(
+        "group flex items-center gap-3 rounded-sm py-2 text-sm font-medium transition-colors",
+        isChild ? "pl-9 pr-3" : "px-3",
+        isActive
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+      <span className="flex-1">{item.label}</span>
+      {showBadgeCount ? (
+        <span
+          className={cn(
+            "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+            isActive
+              ? "bg-primary-foreground text-primary"
+              : "bg-primary text-primary-foreground",
+          )}
+        >
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : item.badge ? (
+        <span
+          className={cn(
+            "rounded-sm px-1.5 py-0.5 text-[10px] font-mono font-semibold",
+            isActive
+              ? "bg-primary-foreground/15 text-primary-foreground"
+              : "bg-muted/50 text-muted-foreground",
+          )}
+        >
+          {item.badge}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function NavGroup({
+  item,
+  pathname,
+  tab,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  tab: string | null;
+  onNavigate?: () => void;
+}) {
+  const groupActive = isItemActive(item, pathname, tab);
+  const [expanded, setExpanded] = useState(groupActive);
+  const Icon = item.icon;
+
+  // Synchronizuj rozwinięcie ze stanem aktywności:
+  // wejście do innego modułu → grupa się zwija; powrót do projektu → rozwija
+  useEffect(() => {
+    setExpanded(groupActive);
+  }, [groupActive]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className={cn(
+          "group flex w-full items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors",
+          groupActive
+            ? "text-foreground"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+        <span className="flex-1 text-left">{item.label}</span>
+        {item.badge && (
+          <span className="rounded-sm bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-muted-foreground">
+            {item.badge}
+          </span>
+        )}
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 text-muted-foreground transition-transform duration-300 ease-out",
+            expanded && "rotate-90",
+          )}
+          strokeWidth={2}
+        />
+      </button>
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="overflow-hidden">
+          {item.children && (
+            <div className="mt-0.5 flex flex-col gap-0.5">
+              {item.children.map((child) => (
+                <NavLeaf
+                  key={child.href}
+                  item={child}
+                  pathname={pathname}
+                  tab={tab}
+                  onNavigate={onNavigate}
+                  unreadCount={0}
+                  isChild
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -197,6 +363,8 @@ function UserFooter({ onSignOut }: { onSignOut?: () => void }) {
 export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab");
   const { data: session } = useSession();
   const trpc = useTRPC();
 
@@ -215,7 +383,7 @@ export function Sidebar() {
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <SidebarHeader />
         <div className="flex-1 overflow-y-auto py-3">
-          <NavLinks pathname={pathname} unreadCount={unreadCount} userRole={userRole} />
+          <NavLinks pathname={pathname} tab={tab} unreadCount={unreadCount} userRole={userRole} />
         </div>
         <UserFooter />
       </aside>
@@ -263,6 +431,7 @@ export function Sidebar() {
             <div className="flex-1 overflow-y-auto py-3">
               <NavLinks
                 pathname={pathname}
+                tab={tab}
                 onNavigate={() => setMobileOpen(false)}
                 unreadCount={unreadCount}
                 userRole={userRole}

@@ -81,9 +81,6 @@ export default function ZadaniaPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
-            Moduł M03
-          </p>
           <h1 className="text-2xl font-bold tracking-tight">Zadania</h1>
         </div>
         {isManager && (

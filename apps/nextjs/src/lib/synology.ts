@@ -120,6 +120,63 @@ export async function uploadFile(
   return { path: `${fullFolderPath}/${fileName}` };
 }
 
+export interface NasEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  mtime: number;
+}
+
+/**
+ * List contents of a folder on NAS.
+ * Returns folders first (alphabetical), then files (alphabetical).
+ * Path must be absolute (e.g. `/JDK/JDK-Z4/...`).
+ */
+export async function listFolder(folderPath: string): Promise<NasEntry[]> {
+  const { sid, token } = await getAuth();
+  const cfg = getConfig();
+
+  const params = new URLSearchParams({
+    api: "SYNO.FileStation.List",
+    version: "2",
+    method: "list",
+    folder_path: folderPath,
+    additional: '["size","time"]',
+    sort_by: "name",
+    sort_direction: "asc",
+    _sid: sid,
+  });
+
+  const res = await fetch(`${cfg.url}/webapi/entry.cgi?${params}`, {
+    headers: { "X-SYNO-TOKEN": token },
+  });
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error(
+      `Synology list failed: code ${data.error?.code ?? "unknown"} for path ${folderPath}`,
+    );
+  }
+
+  const files: { name: string; path: string; isdir: boolean; additional?: { size?: number; time?: { mtime?: number } } }[] = data.data?.files ?? [];
+
+  const entries: NasEntry[] = files.map((f) => ({
+    name: f.name,
+    path: f.path,
+    isDir: f.isdir,
+    size: f.additional?.size ?? 0,
+    mtime: (f.additional?.time?.mtime ?? 0) * 1000,
+  }));
+
+  entries.sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.name.localeCompare(b.name, "pl", { numeric: true });
+  });
+
+  return entries;
+}
+
 /** Download file from NAS — returns Response with binary data */
 export async function downloadFile(filePath: string): Promise<{ body: ArrayBuffer; contentType: string } | null> {
   const { sid, token } = await getAuth();

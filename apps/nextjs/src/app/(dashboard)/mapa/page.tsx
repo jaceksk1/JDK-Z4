@@ -4,11 +4,12 @@ import type { UnitStatus } from "@acme/validators";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Construction, FileImage, LayoutGrid } from "lucide-react";
+import { Construction, FileImage, FolderTree, LayoutGrid } from "lucide-react";
 
 import { cn } from "@acme/ui";
 
 import { Breadcrumbs } from "~/components/mapa/breadcrumbs";
+import { FileBrowser } from "~/components/mapa/file-browser";
 import type { OverviewStats } from "~/components/mapa/overview-tile";
 import { OverviewTile } from "~/components/mapa/overview-tile";
 import { StatusFilter } from "~/components/mapa/status-filter";
@@ -29,6 +30,7 @@ export default function MapaPage() {
   const unitId = searchParams.get("unit");
   const statusFilter = searchParams.get("status") as UnitStatus | null;
   const viewMode = searchParams.get("view") ?? "list"; // list | plan
+  const tab = (searchParams.get("tab") ?? "buildings") as "buildings" | "files";
 
   const level: Level =
     building === "garage"
@@ -89,58 +91,98 @@ export default function MapaPage() {
     router.push(`/mapa?${params.toString()}`);
   };
 
+  const setTab = (next: "buildings" | "files") => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "buildings") params.delete("tab");
+    else params.set("tab", next);
+    // Resetuj parametry drugiej zakładki przy przełączeniu
+    if (next === "files") {
+      params.delete("building");
+      params.delete("section");
+      params.delete("floorId");
+      params.delete("floorLabel");
+      params.delete("unit");
+      params.delete("status");
+      params.delete("view");
+    } else {
+      params.delete("filePath");
+    }
+    router.push(`/mapa?${params.toString()}`);
+  };
+
   return (
     <div className="p-6">
       {/* Page header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
-            M01
-          </p>
-          <h1 className="text-2xl font-bold tracking-tight">Mapa Budynku</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Projekt</h1>
         </div>
       </div>
 
-      {/* Breadcrumbs */}
-      {crumbs.length > 0 && (
-        <div className="mb-5">
-          <Breadcrumbs crumbs={crumbs} />
-        </div>
-      )}
+      {/* Top-level tabs: Mapa / Pliki */}
+      <div className="mb-5 flex items-center gap-1 rounded-sm border bg-muted/30 p-1 w-fit">
+        <TabButton
+          active={tab === "buildings"}
+          onClick={() => setTab("buildings")}
+          icon={<LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />}
+        >
+          Mapa
+        </TabButton>
+        <TabButton
+          active={tab === "files"}
+          onClick={() => setTab("files")}
+          icon={<FolderTree className="h-3.5 w-3.5" strokeWidth={2} />}
+        >
+          Pliki
+        </TabButton>
+      </div>
 
-      {/* Content per level */}
-      {level === "root" && <RootLevel />}
-      {level === "building" && building !== "garage" && (
-        <BuildingLevel building={building!} />
-      )}
-      {level === "section" && (
-        <SectionLevel building={building!} section={section!} />
-      )}
-      {level === "floor" && (
-        <FloorLevel
-          building={building!}
-          section={section!}
-          floorId={floorId!}
-          floorLabel={floorLabel ?? ""}
-          viewMode={viewMode as "list" | "plan"}
-          onViewModeChange={setViewMode}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          onUnitClick={openUnit}
-          activeUnitId={unitId}
-        />
-      )}
-      {level === "garage" && (
-        <GarageLevel
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          onUnitClick={openUnit}
-          activeUnitId={unitId}
-        />
-      )}
+      {tab === "files" ? (
+        <FileBrowser />
+      ) : (
+        <>
+          {/* Breadcrumbs */}
+          {crumbs.length > 0 && (
+            <div className="mb-5">
+              <Breadcrumbs crumbs={crumbs} />
+            </div>
+          )}
 
-      {/* Detail sheet */}
-      <UnitDetailSheet unitId={unitId} onClose={closeUnit} />
+          {/* Content per level */}
+          {level === "root" && <RootLevel />}
+          {level === "building" && building !== "garage" && (
+            <BuildingLevel building={building!} />
+          )}
+          {level === "section" && (
+            <SectionLevel building={building!} section={section!} />
+          )}
+          {level === "floor" && (
+            <FloorLevel
+              building={building!}
+              section={section!}
+              floorId={floorId!}
+              floorLabel={floorLabel ?? ""}
+              viewMode={viewMode as "list" | "plan"}
+              onViewModeChange={setViewMode}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              onUnitClick={openUnit}
+              activeUnitId={unitId}
+            />
+          )}
+          {level === "garage" && (
+            <GarageLevel
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              onUnitClick={openUnit}
+              activeUnitId={unitId}
+            />
+          )}
+
+          {/* Detail sheet */}
+          <UnitDetailSheet unitId={unitId} onClose={closeUnit} />
+        </>
+      )}
     </div>
   );
 }

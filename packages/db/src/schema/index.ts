@@ -1,4 +1,5 @@
 export * from "./buildings";
+export * from "./drawings";
 export * from "./floors";
 export * from "./projects";
 export * from "./sections";

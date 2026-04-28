@@ -80,9 +80,6 @@ export default function QaPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
-            Moduł M08
-          </p>
           <h1 className="text-2xl font-bold tracking-tight">Q&A</h1>
         </div>
         <button
