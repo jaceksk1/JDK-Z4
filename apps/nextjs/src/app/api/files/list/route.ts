@@ -4,12 +4,16 @@ import { auth } from "~/auth/server";
 import { env } from "~/env";
 import { listFolder } from "~/lib/synology";
 
-const NAS_BASE = env.SYNOLOGY_BASE_PATH!.replace(/\/$/, "");
+export const dynamic = "force-dynamic";
 
-function isWithinBase(target: string): boolean {
+function getNasBase(): string {
+  return (env.SYNOLOGY_BASE_PATH ?? "").replace(/\/$/, "");
+}
+
+function isWithinBase(target: string, base: string): boolean {
   const normalized = target.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (normalized === NAS_BASE) return true;
-  return normalized.startsWith(`${NAS_BASE}/`) && !normalized.includes("/..");
+  if (normalized === base) return true;
+  return normalized.startsWith(`${base}/`) && !normalized.includes("/..");
 }
 
 export async function GET(req: NextRequest) {
@@ -18,10 +22,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const requested = req.nextUrl.searchParams.get("path") ?? NAS_BASE;
-  const target = requested.startsWith("/") ? requested : `${NAS_BASE}/${requested}`;
+  const nasBase = getNasBase();
+  if (!nasBase) {
+    return NextResponse.json(
+      { error: "SYNOLOGY_BASE_PATH not configured" },
+      { status: 500 },
+    );
+  }
 
-  if (!isWithinBase(target)) {
+  const requested = req.nextUrl.searchParams.get("path") ?? nasBase;
+  const target = requested.startsWith("/") ? requested : `${nasBase}/${requested}`;
+
+  if (!isWithinBase(target, nasBase)) {
     return NextResponse.json({ error: "Path outside allowed scope" }, { status: 403 });
   }
 

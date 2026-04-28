@@ -67,7 +67,13 @@
     "AUTH_DISCORD_SECRET",
     "AUTH_REDIRECT_PROXY_URL",
     "AUTH_SECRET",
-    "PORT"
+    "PORT",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SYNOLOGY_URL",
+    "SYNOLOGY_USER",
+    "SYNOLOGY_PASS",
+    "SYNOLOGY_BASE_PATH"
   ],
   "globalPassThroughEnv": [
     "NODE_ENV",
