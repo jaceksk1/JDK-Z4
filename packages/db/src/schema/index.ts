@@ -1,6 +1,7 @@
 export * from "./buildings";
 export * from "./drawings";
 export * from "./floors";
+export * from "./groups";
 export * from "./projects";
 export * from "./sections";
 export * from "./questions";

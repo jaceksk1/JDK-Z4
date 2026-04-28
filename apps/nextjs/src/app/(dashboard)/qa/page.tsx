@@ -10,12 +10,16 @@ import { QuestionCard } from "~/components/qa/question-card";
 import { QuestionDetailSheet } from "~/components/qa/question-detail-sheet";
 import { QuestionForm } from "~/components/qa/question-form";
 import { StatusFilterQa } from "~/components/qa/status-filter-qa";
+import { useRequireModule } from "~/hooks/use-require-module";
 import { useTRPC } from "~/trpc/react";
 
 export default function QaPage() {
+  const { hasAccess } = useRequireModule("qa");
   const searchParams = useSearchParams();
   const router = useRouter();
   const trpc = useTRPC();
+
+  if (!hasAccess) return null;
 
   const statusFilter = searchParams.get("status") as QuestionStatus | null;
   const searchQuery = searchParams.get("search") ?? "";

@@ -17,6 +17,7 @@ import {
   Menu,
   MessageSquare,
   Moon,
+  ShieldCheck,
   Sun,
   Users,
   X,
@@ -42,6 +43,8 @@ interface NavItem {
   icon: LucideIcon;
   showUnread?: boolean;
   adminOnly?: boolean;
+  /** Klucz modułu z @acme/validators MODULE_KEYS — kontrolowany przez grupy. */
+  moduleKey?: "mapa" | "pliki" | "zadania" | "qa";
   children?: NavItem[];
   /** Aktywny tylko gdy searchParams[key] === value (null = brak parametru). */
   matchSearch?: { key: string; value: string | null };
@@ -58,18 +61,21 @@ const NAV_ITEMS: readonly NavItem[] = [
         label: "Mapa",
         icon: LayoutGrid,
         matchSearch: { key: "tab", value: null },
+        moduleKey: "mapa",
       },
       {
         href: "/mapa?tab=files",
         label: "Pliki",
         icon: FolderTree,
         matchSearch: { key: "tab", value: "files" },
+        moduleKey: "pliki",
       },
     ],
   },
-  { href: "/zadania", label: "Zadania", icon: ListChecks },
-  { href: "/qa", label: "Q&A", icon: MessageSquare, showUnread: true },
+  { href: "/zadania", label: "Zadania", icon: ListChecks, moduleKey: "zadania" },
+  { href: "/qa", label: "Q&A", icon: MessageSquare, showUnread: true, moduleKey: "qa" },
   { href: "/admin/users", label: "Użytkownicy", icon: Users, adminOnly: true },
+  { href: "/admin/groups", label: "Grupy", icon: ShieldCheck, adminOnly: true },
   { href: "/admin/drawings", label: "Indeks rysunków", icon: FileSearch, adminOnly: true },
 ] as const;
 
@@ -99,6 +105,20 @@ interface NavLinksProps {
   onNavigate?: () => void;
   unreadCount: number;
   userRole: string;
+  effectiveModules: Set<string>;
+}
+
+/** Czy item ma być widoczny dla bieżącego usera. */
+function isItemVisible(
+  item: NavItem,
+  userRole: string,
+  effectiveModules: Set<string>,
+): boolean {
+  if (item.adminOnly && userRole !== "admin") return false;
+  // Admin widzi wszystko — bypass check moduleKey
+  if (userRole === "admin") return true;
+  if (item.moduleKey && !effectiveModules.has(item.moduleKey)) return false;
+  return true;
 }
 
 function NavLinks({
@@ -107,16 +127,21 @@ function NavLinks({
   onNavigate,
   unreadCount,
   userRole,
+  effectiveModules,
 }: NavLinksProps) {
   return (
     <nav className="flex flex-col gap-0.5 px-3">
       {NAV_ITEMS.map((item) => {
-        if (item.adminOnly && userRole !== "admin") return null;
+        if (!isItemVisible(item, userRole, effectiveModules)) return null;
         if (item.children) {
+          const visibleChildren = item.children.filter((c) =>
+            isItemVisible(c, userRole, effectiveModules),
+          );
+          if (visibleChildren.length === 0) return null;
           return (
             <NavGroup
               key={item.label}
-              item={item}
+              item={{ ...item, children: visibleChildren }}
               pathname={pathname}
               tab={tab}
               onNavigate={onNavigate}
@@ -374,8 +399,15 @@ export function Sidebar() {
     refetchInterval: 60_000, // odświeżaj co minutę
   });
 
+  const { data: myModules } = useQuery({
+    ...trpc.group.myModules.queryOptions(),
+    enabled: !!session,
+    staleTime: 5 * 60_000,
+  });
+
   const unreadCount = dashData?.unreadCount ?? 0;
   const userRole = session?.user?.role ?? "worker";
+  const effectiveModules = new Set(myModules ?? []);
 
   return (
     <>
@@ -383,7 +415,13 @@ export function Sidebar() {
       <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <SidebarHeader />
         <div className="flex-1 overflow-y-auto py-3">
-          <NavLinks pathname={pathname} tab={tab} unreadCount={unreadCount} userRole={userRole} />
+          <NavLinks
+            pathname={pathname}
+            tab={tab}
+            unreadCount={unreadCount}
+            userRole={userRole}
+            effectiveModules={effectiveModules}
+          />
         </div>
         <UserFooter />
       </aside>
@@ -435,6 +473,7 @@ export function Sidebar() {
                 onNavigate={() => setMobileOpen(false)}
                 unreadCount={unreadCount}
                 userRole={userRole}
+                effectiveModules={effectiveModules}
               />
             </div>
             <UserFooter onSignOut={() => setMobileOpen(false)} />

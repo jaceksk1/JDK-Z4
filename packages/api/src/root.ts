@@ -2,6 +2,7 @@ import { adminRouter } from "./router/admin";
 import { authRouter } from "./router/auth";
 import { dashboardRouter } from "./router/dashboard";
 import { drawingRouter } from "./router/drawing";
+import { groupRouter } from "./router/group";
 import { questionRouter } from "./router/question";
 import { stageRouter } from "./router/stage";
 import { taskRouter } from "./router/task";
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   auth: authRouter,
   dashboard: dashboardRouter,
   drawing: drawingRouter,
+  group: groupRouter,
   question: questionRouter,
   stage: stageRouter,
   task: taskRouter,

@@ -2,8 +2,8 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { eq } from "@acme/db";
-import { user } from "@acme/db/schema";
+import { eq, inArray } from "@acme/db";
+import { groups, user, userGroups } from "@acme/db/schema";
 import { createUserInputSchema, updateUserInputSchema } from "@acme/validators";
 
 import { protectedProcedure } from "../trpc";
@@ -38,9 +38,9 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 });
 
 export const adminRouter = {
-  /** Lista wszystkich użytkowników */
+  /** Lista wszystkich użytkowników wraz z ich grupami */
   listUsers: adminProcedure.query(async ({ ctx }) => {
-    return ctx.db
+    const users = await ctx.db
       .select({
         id: user.id,
         name: user.name,
@@ -51,6 +51,31 @@ export const adminRouter = {
       })
       .from(user)
       .orderBy(user.name);
+
+    if (users.length === 0) return [];
+
+    const userIds = users.map((u) => u.id);
+    const memberships = await ctx.db
+      .select({
+        userId: userGroups.userId,
+        groupId: groups.id,
+        groupName: groups.name,
+      })
+      .from(userGroups)
+      .innerJoin(groups, eq(groups.id, userGroups.groupId))
+      .where(inArray(userGroups.userId, userIds));
+
+    const groupsByUser = new Map<string, { id: string; name: string }[]>();
+    for (const m of memberships) {
+      const arr = groupsByUser.get(m.userId) ?? [];
+      arr.push({ id: m.groupId, name: m.groupName });
+      groupsByUser.set(m.userId, arr);
+    }
+
+    return users.map((u) => ({
+      ...u,
+      groups: groupsByUser.get(u.id) ?? [],
+    }));
   }),
 
   /** Tworzenie nowego użytkownika przez admina */
@@ -97,12 +122,33 @@ export const adminRouter = {
         .set({ role: input.role, company: input.company ?? null })
         .where(eq(user.id, result.user.id));
 
+      // Sprawdź że wszystkie wybrane grupy istnieją
+      const existingGroups = await ctx.db
+        .select({ id: groups.id })
+        .from(groups)
+        .where(inArray(groups.id, input.groupIds));
+      if (existingGroups.length !== input.groupIds.length) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Niektóre wybrane grupy nie istnieją",
+        });
+      }
+
+      // Przypisz do grup
+      await ctx.db.insert(userGroups).values(
+        input.groupIds.map((groupId) => ({
+          userId: result.user.id,
+          groupId,
+        })),
+      );
+
       return {
         id: result.user.id,
         name: fullName,
         username,
         role: input.role,
         company: input.company ?? null,
+        groupIds: input.groupIds,
       };
     }),
 
@@ -129,11 +175,33 @@ export const adminRouter = {
         })
         .where(eq(user.id, input.userId));
 
+      // Sprawdź że wszystkie wybrane grupy istnieją
+      const existingGroups = await ctx.db
+        .select({ id: groups.id })
+        .from(groups)
+        .where(inArray(groups.id, input.groupIds));
+      if (existingGroups.length !== input.groupIds.length) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Niektóre wybrane grupy nie istnieją",
+        });
+      }
+
+      // Reset członkostwa: delete + insert
+      await ctx.db.delete(userGroups).where(eq(userGroups.userId, input.userId));
+      await ctx.db.insert(userGroups).values(
+        input.groupIds.map((groupId) => ({
+          userId: input.userId,
+          groupId,
+        })),
+      );
+
       return {
         id: input.userId,
         name: input.name,
         role: input.role,
         company: input.company ?? null,
+        groupIds: input.groupIds,
       };
     }),
 

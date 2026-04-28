@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 
 import { toast } from "@acme/ui/toast";
 
+import { GroupMultiSelect } from "~/components/admin/group-multi-select";
 import { useTRPC } from "~/trpc/react";
 
 const ROLE_LABELS = {
@@ -34,6 +35,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
   const [role, setRole] = useState<Role>("worker");
   const [company, setCompany] = useState("");
   const [password, setPassword] = useState("");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
 
   const trpc = useTRPC();
   const createUser = useMutation(
@@ -47,6 +49,7 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
         setPassword("");
         setRole("worker");
         setCompany("");
+        setGroupIds([]);
         onSuccess();
       },
       onError: (err) => {
@@ -62,7 +65,18 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createUser.mutate({ firstName, lastName, role, company: company || undefined, password });
+    if (groupIds.length === 0) {
+      toast.error("Wybierz przynajmniej jedną grupę");
+      return;
+    }
+    createUser.mutate({
+      firstName,
+      lastName,
+      role,
+      company: company || undefined,
+      password,
+      groupIds,
+    });
   }
 
   return (
@@ -125,6 +139,16 @@ export function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           placeholder="np. JDK Elektro"
           className="rounded-sm border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium">
+          Grupy uprawnień <span className="text-destructive">*</span>
+        </label>
+        <GroupMultiSelect value={groupIds} onChange={setGroupIds} />
+        <p className="text-xs text-muted-foreground">
+          Określa które moduły będzie widzieć użytkownik. Wymagana min. 1 grupa.
+        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">

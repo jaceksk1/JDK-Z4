@@ -15,6 +15,7 @@ import { OverviewTile } from "~/components/mapa/overview-tile";
 import { StatusFilter } from "~/components/mapa/status-filter";
 import { UnitCard } from "~/components/mapa/unit-card";
 import { UnitDetailSheet } from "~/components/mapa/unit-detail-sheet";
+import { useRequireModule } from "~/hooks/use-require-module";
 import { useTRPC } from "~/trpc/react";
 
 type Level = "root" | "building" | "section" | "floor" | "garage";
@@ -31,6 +32,10 @@ export default function MapaPage() {
   const statusFilter = searchParams.get("status") as UnitStatus | null;
   const viewMode = searchParams.get("view") ?? "list"; // list | plan
   const tab = (searchParams.get("tab") ?? "buildings") as "buildings" | "files";
+
+  // Guard: zakładka "Pliki" wymaga modułu "pliki", reszta — modułu "mapa"
+  const { hasAccess } = useRequireModule(tab === "files" ? "pliki" : "mapa");
+  if (!hasAccess) return null;
 
   const level: Level =
     building === "garage"

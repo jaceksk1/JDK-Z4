@@ -7,6 +7,7 @@ import { Loader2, Save, KeyRound, Trash2, X } from "lucide-react";
 import { cn } from "@acme/ui";
 import { toast } from "@acme/ui/toast";
 
+import { GroupMultiSelect } from "~/components/admin/group-multi-select";
 import { useTRPC } from "~/trpc/react";
 
 const ROLE_LABELS = {
@@ -23,6 +24,7 @@ interface UserData {
   username: string | null;
   role: string | null;
   company: string | null;
+  groups?: { id: string; name: string }[];
 }
 
 interface EditUserSheetProps {
@@ -37,6 +39,7 @@ export function EditUserSheet({ user, onClose }: EditUserSheetProps) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("worker");
   const [company, setCompany] = useState("");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [newPassword, setNewPassword] = useState("");
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -46,6 +49,7 @@ export function EditUserSheet({ user, onClose }: EditUserSheetProps) {
       setName(user.name);
       setRole((user.role as Role) ?? "worker");
       setCompany(user.company ?? "");
+      setGroupIds(user.groups?.map((g) => g.id) ?? []);
       setNewPassword("");
       setShowPasswordReset(false);
       setConfirmDelete(false);
@@ -103,7 +107,10 @@ export function EditUserSheet({ user, onClose }: EditUserSheetProps) {
 
   if (!user) return null;
 
-  const canSave = name.trim().length >= 2 && !updateMutation.isPending;
+  const canSave =
+    name.trim().length >= 2 &&
+    groupIds.length >= 1 &&
+    !updateMutation.isPending;
   const canResetPassword =
     newPassword.length >= 4 && !resetPasswordMutation.isPending;
 
@@ -174,6 +181,18 @@ export function EditUserSheet({ user, onClose }: EditUserSheetProps) {
               />
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">
+                Grupy uprawnień <span className="text-destructive">*</span>
+              </label>
+              <GroupMultiSelect value={groupIds} onChange={setGroupIds} />
+              {groupIds.length === 0 && (
+                <p className="text-xs text-destructive">
+                  Wybierz przynajmniej jedną grupę
+                </p>
+              )}
+            </div>
+
             <button
               disabled={!canSave}
               onClick={() =>
@@ -182,6 +201,7 @@ export function EditUserSheet({ user, onClose }: EditUserSheetProps) {
                   name: name.trim(),
                   role,
                   company: company || undefined,
+                  groupIds,
                 })
               }
               className={cn(

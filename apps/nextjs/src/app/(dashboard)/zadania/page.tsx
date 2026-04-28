@@ -11,13 +11,17 @@ import { StatusFilterTasks } from "~/components/zadania/status-filter-tasks";
 import { TaskCard } from "~/components/zadania/task-card";
 import { TaskDetailSheet } from "~/components/zadania/task-detail-sheet";
 import { TaskForm } from "~/components/zadania/task-form";
+import { useRequireModule } from "~/hooks/use-require-module";
 import { useTRPC } from "~/trpc/react";
 
 export default function ZadaniaPage() {
+  const { hasAccess } = useRequireModule("zadania");
   const searchParams = useSearchParams();
   const router = useRouter();
   const trpc = useTRPC();
   const { data: session } = useSession();
+
+  if (!hasAccess) return null;
 
   const statusFilter = searchParams.get("status") as TaskStatus | null;
   const searchQuery = searchParams.get("search") ?? "";

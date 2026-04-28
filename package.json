@@ -16,6 +16,7 @@
     "db:seed": "turbo -F @acme/db seed",
     "db:seed-admin": "turbo -F @acme/db seed-admin",
     "db:seed-cards": "turbo -F @acme/db seed-cards",
+    "db:seed-groups": "turbo -F @acme/db seed-groups",
     "db:studio": "turbo -F @acme/db studio",
     "dev": "turbo watch dev --continue",
     "dev:next": "turbo watch dev -F @acme/nextjs...",

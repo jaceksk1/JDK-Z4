@@ -48,6 +48,7 @@ export default function AdminUsersPage() {
     username: string | null;
     role: string | null;
     company: string | null;
+    groups: { id: string; name: string }[];
   } | null>(null);
 
   const [search, setSearch] = useState("");
@@ -272,6 +273,9 @@ export default function AdminUsersPage() {
                   currentDir={sortDir}
                   onToggle={toggleSort}
                 />
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  Grupy
+                </th>
                 <th className="px-4 py-3 text-right font-medium text-muted-foreground">
                 </th>
               </tr>
@@ -295,6 +299,24 @@ export default function AdminUsersPage() {
                     >
                       {ROLE_LABELS[u.role ?? "worker"] ?? u.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {u.groups.length === 0 ? (
+                        <span className="text-[11px] text-destructive italic">
+                          brak grupy
+                        </span>
+                      ) : (
+                        u.groups.map((g) => (
+                          <span
+                            key={g.id}
+                            className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                          >
+                            {g.name}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
