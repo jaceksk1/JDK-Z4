@@ -116,17 +116,25 @@ JDK Z4/
 - [x] **Integracja etapy ↔ Q&A** — kliknięcie wykrzyknika przy etapie: oznacza issue + redirect do Q&A z pre-fill (jednostka + nazwa etapu); kierownik przy zamykaniu pytania widzi checkboxy "Usuń problem z etapu" i może zresetować issue stages do pending
 - [x] **Karty instalacyjne mieszkań i LU (PDF, 3 typy)** — pole `cardCode: text` na `units` (np. `A1.1.5` dla mieszkań, `A1.U.1` dla LU); seed `pnpm db:seed-cards` (klatka.piętro.lokalNaPiętrze dla mieszkań, designator dla LU); 3 zakładki w detail sheet: **Karta** / **Oświetlenie** / **Gniazda**; ścieżka NAS: `/JDK/JDK-Z4/Projekt/08 Karty Katalogowe/2. KARTY INSTALACYJNE/BUDYNEK {A|B}/PDF/{cardCode}/{cardCode}.{karta|osw|gn}.pdf`; numeracja kafelek/breadcrumbs używa cardCode (lokalna na piętrze) zamiast designatora globalnego; mutation `unit.updateCardCode` (manager+) z walidacją regex
 
-**Do zrobienia:**
-- [ ] **Krok 10** — Deploy na Vercel
+- [x] **Krok 10 — Deploy produkcyjny (28.04.2026)** — Vercel + Supabase prod (`jdk-z4-prod`, region `fra1` Frankfurt), domena `https://app.jdkasprzak.pl` (A record `app` → `76.76.21.21` w easyisp DNS, cert SSL Let's Encrypt auto), proxy.ts dodaje `/dashboard` do `PROTECTED_PATHS`. **5 pułapek deployu** rozwiązanych: (1) `git log origin/main..HEAD` przed deployem; (2) Zod 4 + `.optional()` nie działa z `.min(1)` w `@t3-oss/env-core`; (3) `tsc` build w `@acme/api/db/validators` → no-op (pakiety konsumowane jako src); (4) Next.js 16 prerender wymaga `export const dynamic = "force-dynamic"` na `(dashboard)/layout.tsx`; (5) `turbo.json.globalEnv` MUSI zawierać każdą env var używaną w aplikacji — bez tego top-level `env.X.replace()` w route.ts wybucha w build phase
+- [x] **Moduł Pliki + Indeks rysunków (28.04.2026)** — `Mapa Budynku` → `Projekt` (sidebar grupa rozwijalna z animacją: Mapa | Pliki). Pliki: `/api/files/list?path=...` z whitelistą `/JDK/JDK-Z4/`, FileBrowser z search po nazwie+opisie, filtr branży (ELE/TEL/SAN), 10 stałych kategorii tematycznych (Bud.A/B, Oświetlenie, Instalacje, Schemat/Widok rozdzielnicy, Odgromowa, Schemat zasilania, Garaż, Parter). Indeks rysunków: tabela `drawings` (fileCode unique per project, description, discipline, phase, revision), tRPC `drawing` router (lookupByCodes/list/import/clear z dedupe i `excluded.X` upsert), `/admin/drawings` z paste-JSON workflow (Claude.ai → JSON → preview → import) — bez bezpośredniego API call. FileBrowser dociąga opisy obok nazw PDF przez `extractDrawingCode()` (heurystyka: 9 segmentów `_`, 8. = typ rysunku `[A-Z]{3}`)
+- [x] **Grupy uprawnień (28.04.2026)** — granularna kontrola widoczności modułów per user. Schema: `groups` (name unique), `group_modules` (groupId+moduleKey PK), `user_groups` (M:N). `MODULE_KEYS = ['mapa','pliki','zadania','qa']` w `@acme/validators` jako single source of truth. Admin (role=admin) widzi wszystko niezależnie od grup. User MUSI mieć ≥1 grupę przy tworzeniu (Zod `min(1)`). Sidebar filtruje po `group.myModules` (admin bypass), `useRequireModule()` guard w stronach. `/admin/groups` (CRUD + panel członków), `/admin/users` (multiselect grup + kolumna „Grupy"). Seed `pnpm db:seed-groups` tworzy „Wszystkie moduły" + „Tylko Q&A", przypisuje orphan userów (idempotentny)
+
+**Do zrobienia (post-MVP):**
+- [ ] Test PWA install na 2 telefonach (Android + iOS)
+- [ ] Zmiana hasła `admin/admin` na prod (publiczna domena)
+- [ ] Rotacja sekretów wklejonych w sesji 28.04 (Supabase password, AUTH_SECRET, Synology password)
+- [ ] (opcjonalne) Whitelist podfolderów w FileBrowser zamiast pełnego `/JDK/JDK-Z4/`
 
 ---
 
 ## AUTH — JAK DZIAŁA
 
 **Logowanie:** username (np. `jan.kowalski`) + hasło  
-**Konto startowe:** `admin` / `admin` (utworzone przez `pnpm db:seed-admin`)  
-**Tworzenie userów:** Panel admina na `/admin/users` — admin może dodawać, edytować, usuwać, resetować hasła  
-**Role:** `admin` | `manager` | `worker`  
+**Konto startowe:** `admin` / `admin` (utworzone przez `pnpm db:seed-admin`) — **⚠️ ZMIENIĆ na prod, domena publiczna**  
+**Tworzenie userów:** Panel admina na `/admin/users` — admin może dodawać, edytować, usuwać, resetować hasła. **WYMAGANE: ≥1 grupa uprawnień przy tworzeniu** (multiselect)  
+**Role (operacyjne):** `admin` | `manager` | `worker` — kontrolują CO user może robić (tworzyć zadania, zamykać Q&A, panel admin)  
+**Grupy (widoczność):** kontrolują KTÓRE moduły user widzi w sidebarze. Role i grupy to ortogonalne wymiary.  
 **Pola użytkownika:** name, username, email (auto), role, company (firma), lastSeenQaAt (powiadomienia)  
 **Username auto-gen:** "Jan Kowalski" → `jan.kowalski` (polskie znaki → ASCII)  
 **Wewnętrzny email:** `{username}@jdkz4.local` (wymagany przez Better Auth, ale niewidoczny dla usera)  
@@ -184,8 +192,11 @@ type UnitType =
 - `~/components/zadania/task-card.tsx` — karta zadania z deadline, przypisanie
 - `~/components/zadania/task-form.tsx` — formularz tworzenia zadania
 - `~/components/zadania/task-detail-sheet.tsx` — szczegóły z zgłoszeniem wykonania + upload zdjęcia
-- `~/components/admin/edit-user-sheet.tsx` — edycja/usuwanie usera + reset hasła
-- `~/lib/synology.ts` — klient Synology FileStation API (server-only)
+- `~/components/admin/edit-user-sheet.tsx` — edycja/usuwanie usera + reset hasła + multiselect grup
+- `~/components/admin/group-multi-select.tsx` — reusable multi-checkbox lista grup z DB
+- `~/components/mapa/file-browser.tsx` — przeglądarka plików NAS z search/filtry/kategorie
+- `~/hooks/use-require-module.ts` — client-side guard `useRequireModule(moduleKey)` — redirect na dashboard przy braku uprawnień
+- `~/lib/synology.ts` — klient Synology FileStation API (server-only) — login, upload, download, listFolder, ensureFolder
 - `~/components/qa/question-detail-sheet.tsx` — szczegóły z odpowiadaniem + usuwanie problemów z etapów
 
 ---
@@ -215,7 +226,10 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Karty instalacyjne LU → PDF z NAS w split view detail sheet
 [✅] Integracja etapy ↔ Q&A → zgłaszanie issue z etapu, usuwanie problemu przy zamykaniu Q&A
 [✅] Karty instalacyjne mieszkań i LU → cardCode (A1.1.5 / A1.U.1), 3 zakładki PDF (karta/osw/gn), folder per jednostka
-[  ] Krok 10 → Deploy na Vercel
+[✅] Krok 10 → Deploy na Vercel — app.jdkasprzak.pl (region fra1, A record w easyisp)
+[✅] Pliki NAS w aplikacji → /mapa?tab=files (FileBrowser z search/filtry/kategorie tematyczne)
+[✅] Indeks rysunków → tabela drawings + paste-JSON z Claude.ai w /admin/drawings; FileBrowser pokazuje opisy obok nazw PDF
+[✅] Grupy uprawnień → MODULE_KEYS w validatorach, sidebar/guards filtrują, /admin/groups CRUD + multi-membership
 ```
 
 ---
@@ -235,7 +249,8 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 **Seed:**
 - `pnpm db:seed` — jednostki (idempotentny, skip jeśli projekt Z4 istnieje)
 - `pnpm db:seed-admin` — konto admin (idempotentny, skip jeśli admin istnieje)
-- `pnpm db:seed-cards` — przypisuje cardNumber mieszkaniom (natural sort per budynek, idempotentny)
+- `pnpm db:seed-cards` — przypisuje cardCode mieszkaniom i LU (klatka.piętro.lokalNaPiętrze dla mieszkań, designator dla LU; idempotentny)
+- `pnpm db:seed-groups` — domyślne grupy uprawnień + przypisanie orphan userów (idempotentny)
 - `pnpm db:fix-units` — czyści błędne jednostki (artefakty DWG: `A1.2.24`, `A1.2.30`, `B2.U.28`, `B2.U.29`)
 - Wszystkie używają `tsx` (nie `ts-node`)
 - Parser seed używa wzorca `TM [AB][12].X.Y` jako source of truth — NIE łapie designatorów bez prefiksu TM (często błędne etykiety projektanta)
@@ -277,6 +292,32 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 - Polskie znaki w ścieżkach folderów powodują problemy — używaj ASCII (`Zdjecia` nie `Zdjęcia`)
 - **Wielkość liter się liczy** — foldery `BUDYNEK A`/`BUDYNEK B` są wielkimi literami (nie `Budynek A`), Synology zwraca 404 przy niezgodności
 - Klient: `apps/nextjs/src/lib/synology.ts`, API route: `apps/nextjs/src/app/api/files/route.ts`
+
+**Deploy Vercel (sesja 28.04.2026, 5 pułapek):**
+- **Konto:** Vercel `jaceksk1`, project `jdk-z4-nextjs` w scope `jaceksk1s-projects`, region `fra1` (Frankfurt — ten sam co Supabase prod)
+- **Domena:** `https://app.jdkasprzak.pl` — A record `app` → `76.76.21.21` w panelu easyisp.pl (NIE CNAME, Vercel preferuje A dla subdomeny gdy apex jest u innego hostingu); cert SSL Let's Encrypt auto. Apex `jdkasprzak.pl` zostaje na easyisp shared hosting (91.200.32.20).
+- **Pułapka 1:** `git log origin/main..HEAD` ZAWSZE przed deployem — Vercel pulluje z GitHub, niepushnięte commity = build starego kodu
+- **Pułapka 2 (Zod 4 + t3-env):** `.optional().min(1)` na string env wybucha "expected string, received undefined" — w `packages/auth/env.ts` opcjonalne env (`AUTH_DISCORD_ID` etc.) BEZ `.min(1)`
+- **Pułapka 3 (monorepo build):** `@acme/api`, `@acme/db`, `@acme/validators` mają `"build": "echo no-op"` (nie `tsc`) — Better Auth produkuje nieprzenośne typy → `tsc` pada. Next.js i tak transpiluje przez `transpilePackages` w `next.config.js`.
+- **Pułapka 4 (Next.js 16 prerender):** `useSearchParams()` na page wymaga `<Suspense>` lub `force-dynamic`. Fix: `export const dynamic = "force-dynamic"` w `apps/nextjs/src/app/(dashboard)/layout.tsx`
+- **Pułapka 5 (turbo.json env):** Każda env var używana w aplikacji MUSI być w `turbo.json.globalEnv`, INACZEJ build wybuchnie przy "Collecting page data" (env undefined → `Cannot read properties of undefined (reading 'replace')`). Plus: NIGDY nie evaluuj env na top-level w `route.ts` — zawsze lazy w handlerze + `force-dynamic`
+- **Schema na prod:** Vercel NIE robi migracji DB. Po pushu schemy: `cd packages/db && pnpm dotenv -e ../../.env.production.local -- drizzle-kit push --force`
+- **Vercel CLI lokalne:** `vercel ls jdk-z4-nextjs --scope=jaceksk1s-projects` (lista deployów), `vercel inspect <URL> --logs` (pełny build log), `vercel domains add app.jdkasprzak.pl jdk-z4-nextjs` (dodanie domeny przez CLI zamiast UI)
+- **Plik `.env.production.local`** (gitignored) — kompletne env do importu na Vercel przez "Import .env file"
+
+**Pliki NAS + Indeks rysunków (sesja 28.04.2026):**
+- **FileBrowser** (`/mapa?tab=files`) — czytany z NAS przez `SYNO.FileStation.List`, whitelistowane do `/JDK/JDK-Z4/` (path traversal blokowany regex `..`)
+- **Drawings** — tabela `drawings` w DB, fileCode unique per project, paste-JSON workflow (Claude.ai parsuje DOC → JSON → admin wkleja w `/admin/drawings`); UPSERT z `excluded.X`, dedupe duplikatów PRZED INSERT (Postgres ON CONFLICT nie obsługuje dwukrotnego klucza w jednym INSERT)
+- **extractDrawingCode** — heurystyka: 9 segmentów `_`, 8. segment musi być `[A-Z]{3}` (RYS/SCH/OPI...). Format: `6295_01_PW_ELE_XXX_XXX_X_RYS_001` (BEZ ostatnich `_01_02` które są wersją). Dyscyplino-agnostyczna — działa dla ELE, TEL, SAN itp.
+- **TOPIC_FILTERS** w `file-browser.tsx` — 10 stałych kategorii (Bud.A/B, Oświetlenie, Instalacje, Schemat/Widok rozdzielnicy, Odgromowa, Schemat zasilania, Garaż, Parter) z patternami matchującymi opis case-insensitive
+
+**Grupy uprawnień (sesja 28.04.2026):**
+- **Schema:** `groups` (name unique), `group_modules` (M:N moduli), `user_groups` (M:N members) — admin (`user.role === 'admin'`) bypassuje wszystkie filtry, widzi każdy moduł
+- **MODULE_KEYS:** `['mapa','pliki','zadania','qa']` w `@acme/validators/modules.ts` — single source of truth, używane w sidebarze, panelu grup, walidatorze grup
+- **NavItem.moduleKey** — sidebar ukrywa item jeśli user nie ma modułu w `effectiveModules` (z `group.myModules` query)
+- **useRequireModule()** — client-side guard hook w `/qa`, `/zadania`, `/mapa` (mapa: warunkowo `mapa` lub `pliki` wg taba); redirect na `/dashboard` przy braku uprawnień
+- **createUser/updateUser** wymaga `groupIds.min(1)` — user nie może istnieć bez grupy. Seed-groups idempotentny: tworzy „Wszystkie moduły" + „Tylko Q&A", przypisuje orphan userów do „Wszystkie moduły".
+- **Page guard pattern dla client component:** ze `'use client'` nie da się server-side guarda — `useRequireModule()` ustawia `router.replace("/dashboard")` w `useEffect`, page returns `null` dopóki `hasAccess === false`
 
 **Karty mieszkań i LU (PDF):**
 - Pole `cardCode: text` nullable na `units` — dla apartment i commercial
