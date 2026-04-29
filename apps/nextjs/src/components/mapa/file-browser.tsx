@@ -45,16 +45,38 @@ async function fetchList(path: string): Promise<ListResponse> {
 }
 
 /**
- * Wyciąga kod rysunku z nazwy pliku — odcina ostatnie segmenty wersji.
- * "6295_01_PW_ELE_XXX_XXX_X_RYS_001_01_02.pdf" → "6295_01_PW_ELE_XXX_XXX_X_RYS_001"
+ * Wyciąga kod rysunku z nazwy pliku.
+ *
+ * Format pliku: 9 segmentów prefiksu + numer rysunku + minor rewizji.
+ *   "6295_01_PW_ELE_ROZ_XXX_X_SCH_XXX_07_01.pdf"
+ *    └────────── prefix ──────────┘ │   │  │
+ *                                 typ  num rev
+ *
+ * Wynik: 10 segmentów (prefix + numer rysunku):
+ *   "6295_01_PW_ELE_ROZ_XXX_X_SCH_XXX_07"
+ *
+ * Numer rysunku jest w 10. segmencie (niezależnie od tego czy 9. to placeholder
+ * XXX jak w schematach rozdzielnic, czy konkretne oznaczenie kondygnacji jak G01/P01
+ * w rzutach). Minor rewizji (11. segment) jest pomijany.
  */
 export function extractDrawingCode(filename: string): string | null {
   const base = filename.replace(/\.[^.]+$/, "");
   const parts = base.split("_");
-  if (parts.length < 8) return null;
+  if (parts.length < 11) return null;
   const typeSegment = parts[7];
   if (!/^[A-Z]{3}$/.test(typeSegment ?? "")) return null;
-  return parts.slice(0, 9).join("_");
+  const drawingNum = parts[9];
+  if (!/^\d+$/.test(drawingNum ?? "")) return null;
+  return parts.slice(0, 10).join("_");
+}
+
+/** Ostatni segment nazwy pliku (minor rewizji, np. "01" / "00"). */
+function extractRevision(filename: string): string | null {
+  const base = filename.replace(/\.[^.]+$/, "");
+  const parts = base.split("_");
+  if (parts.length < 2) return null;
+  const last = parts[parts.length - 1];
+  return last && /^\d+$/.test(last) ? last : null;
 }
 
 /** Wyciąga 4. segment z nazwy (dyscyplina: ELE/TEL/SAN/...) */
@@ -120,6 +142,7 @@ export function FileBrowser() {
   const [search, setSearch] = useState("");
   const [discipline, setDiscipline] = useState<string>(FILTER_ALL);
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [showCodes, setShowCodes] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["nas-list", path],
@@ -320,6 +343,19 @@ export function FileBrowser() {
             </button>
           </>
         )}
+
+        <button
+          onClick={() => setShowCodes((v) => !v)}
+          className={cn(
+            "rounded-sm border px-2 py-1.5 text-xs font-mono transition-colors",
+            showCodes
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border bg-background text-muted-foreground hover:bg-muted",
+          )}
+          title="Pokaż wyciągnięte kody plików (debug)"
+        >
+          {showCodes ? "✓ kody" : "kody"}
+        </button>
       </div>
 
       {/* Kategorie tematyczne — stała lista, ukryte gdy brak matchu */}
@@ -385,24 +421,30 @@ export function FileBrowser() {
           ) : (
             <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
               {/* Header (desktop) */}
-              <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_70px_80px_24px] gap-3 border-b bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_50px_70px_80px_24px] gap-3 border-b bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <div>Nazwa</div>
                 <div>Opis</div>
+                <div className="text-center">Rew.</div>
                 <div className="text-right">Rozmiar</div>
                 <div className="text-right">Modyfikacja</div>
                 <div></div>
               </div>
               <ul className="divide-y">
-                {filteredEntries.map(({ entry, description }) => (
-                  <FileRow
-                    key={entry.path}
-                    entry={entry}
-                    description={description}
-                    highlight={search.trim()}
-                    onFolderClick={() => navigate(entry.path)}
-                    onFileClick={() => openFile(entry.path)}
-                  />
-                ))}
+                {filteredEntries.map(({ entry, description }) => {
+                  const code = entry.isDir ? null : extractDrawingCode(entry.name);
+                  return (
+                    <FileRow
+                      key={entry.path}
+                      entry={entry}
+                      description={description}
+                      extractedCode={code}
+                      showCode={showCodes}
+                      highlight={search.trim()}
+                      onFolderClick={() => navigate(entry.path)}
+                      onFileClick={() => openFile(entry.path)}
+                    />
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -460,18 +502,23 @@ function PathBreadcrumb({
 function FileRow({
   entry,
   description,
+  extractedCode,
+  showCode,
   highlight,
   onFolderClick,
   onFileClick,
 }: {
   entry: NasEntry;
   description: string | null;
+  extractedCode: string | null;
+  showCode: boolean;
   highlight: string;
   onFolderClick: () => void;
   onFileClick: () => void;
 }) {
   const Icon = getIcon(entry);
   const handleClick = entry.isDir ? onFolderClick : onFileClick;
+  const revision = entry.isDir ? null : extractRevision(entry.name);
 
   return (
     <li>
@@ -479,7 +526,7 @@ function FileRow({
         onClick={handleClick}
         className={cn(
           "grid w-full grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50",
-          "md:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.2fr)_70px_80px_24px]",
+          "md:grid-cols-[24px_minmax(0,1fr)_minmax(0,1.2fr)_50px_70px_80px_24px]",
           entry.isDir && "font-medium",
         )}
       >
@@ -503,18 +550,33 @@ function FileRow({
               <Highlight text={description} term={highlight} />
             </div>
           )}
+          {showCode && extractedCode && (
+            <div className="truncate text-[10px] font-mono text-muted-foreground/70 mt-0.5">
+              {extractedCode}
+            </div>
+          )}
         </div>
         {/* Opis jako osobna kolumna — desktop */}
         <div
           className="hidden md:block min-w-0 truncate text-xs text-foreground/85"
-          title={description ?? ""}
+          title={description ?? extractedCode ?? ""}
         >
           {description ? (
             <Highlight text={description} term={highlight} />
+          ) : extractedCode ? (
+            <span
+              className="font-mono text-[10px] text-amber-600 dark:text-amber-400"
+              title={`Brak opisu w indeksie. Kod wyciągnięty z nazwy: ${extractedCode}`}
+            >
+              ⚠ {extractedCode}
+            </span>
           ) : (
             <span className="text-muted-foreground/40">—</span>
           )}
         </div>
+        <span className="hidden md:inline shrink-0 font-mono text-[11px] text-muted-foreground text-center">
+          {revision ?? ""}
+        </span>
         <span className="hidden md:inline shrink-0 font-mono text-[11px] text-muted-foreground text-right">
           {entry.isDir ? "" : formatSize(entry.size)}
         </span>

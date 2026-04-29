@@ -34,7 +34,16 @@ Zwróć JEDYNIE czysty JSON (bez komentarzy, bez markdown'a) jako tablicę obiek
 ]
 
 Zasady:
-- fileCode = stała część kodu identyfikująca rysunek, BEZ wersji (rewizji)
+- fileCode = STAŁA część kodu z dokumentu OPI, ZAWSZE 9 segmentów (np.
+  "6295_01_PW_ELE_ROZ_XXX_X_SCH_XXX" lub "6295_01_PW_ELE_OUZ_A00_X_RZU_P01"),
+  9. segment może być placeholderem "XXX" lub konkretnym oznaczeniem (G01, P01, ...).
+  NIE dopisuj numeru rysunku do fileCode — numer pojawi się osobno w revision.
+- revision = format "NN_MM" gdzie NN = numer rysunku (1-99), MM = minor rewizji
+  (np. "07_01" — rysunek nr 7, rewizja 01). Czytaj z tabeli OPI, kolumna
+  "Rewizja" lub "Nr rysunku/wersja".
+- Każda para (fileCode, revision[NN]) musi być unikalna w obrębie projektu.
+  Jeśli widzisz rzędy z tym samym fileCode i różnymi opisami, sprawdź czy
+  rzeczywiście mają różne NN w revision.
 - description = treść z dokumentu, max 500 znaków, polski
 - Pomiń rysunki bez kodu lub bez opisu
 - Zwróć tylko JSON, nic więcej`;
@@ -47,8 +56,50 @@ interface DrawingItem {
   revision?: string | null;
 }
 
+/**
+ * Pliki PDF na NAS mają 11 segmentów: 9 segmentów prefiksu (jak w fileCode z OPI)
+ * + numer rysunku + minor rewizji. fileCode w JSON ma tylko 9 segmentów — brakuje
+ * mu 10. segmentu (numeru rysunku), który projektant zapisał w polu `revision`
+ * w formacie "NN_MM" (NN = numer rysunku, MM = minor).
+ *
+ * Dopisujemy numer z revision jako 10. segment, żeby kod był unikalny i matchował
+ * to co zwraca extractDrawingCode w file-browser.
+ *
+ * Przykład: ("6295_01_PW_ELE_ROZ_XXX_X_SCH_XXX", "07_01")
+ *           → "6295_01_PW_ELE_ROZ_XXX_X_SCH_XXX_07"
+ *
+ * Działa identycznie dla rzutów z konkretnym 9. segmentem:
+ *   ("6295_01_PW_ELE_OUZ_A00_X_RZU_P01", "01_00")
+ *   → "6295_01_PW_ELE_OUZ_A00_X_RZU_P01_01"
+ */
+function expandFileCode(
+  fileCode: string,
+  revision: string | null | undefined,
+): { code: string; expanded: boolean } {
+  if (!revision) return { code: fileCode, expanded: false };
+  const parts = fileCode.split("_");
+  if (parts.length !== 9) return { code: fileCode, expanded: false };
+  const m = /^(\d+)_\d+$/.exec(revision.trim());
+  if (!m?.[1]) return { code: fileCode, expanded: false };
+  const num = m[1].padStart(2, "0");
+  return { code: fileCode + "_" + num, expanded: true };
+}
+
 interface PreviewItem extends DrawingItem {
   selected: boolean;
+  duplicateCodeGroup: number | null;
+  duplicateDescGroup: number | null;
+  originalFileCode: string | null;
+}
+
+interface ParseStats {
+  total: number;
+  uniqueCodes: number;
+  duplicateCodeGroups: number;
+  duplicateCodeRows: number;
+  duplicateDescGroups: number;
+  duplicateDescRows: number;
+  expandedCodes: number;
 }
 
 export default function AdminDrawingsPage() {
@@ -57,6 +108,7 @@ export default function AdminDrawingsPage() {
   const [json, setJson] = useState("");
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [parseStats, setParseStats] = useState<ParseStats | null>(null);
 
   const listQuery = useQuery(
     trpc.drawing.list.queryOptions({ projectCode: PROJECT_CODE }),
@@ -68,6 +120,7 @@ export default function AdminDrawingsPage() {
         setJson("");
         setPreview(null);
         setParseError(null);
+        setParseStats(null);
         void queryClient.invalidateQueries({
           queryKey: trpc.drawing.list.queryKey({ projectCode: PROJECT_CODE }),
         });
@@ -94,6 +147,7 @@ export default function AdminDrawingsPage() {
   const handleParse = () => {
     setParseError(null);
     setPreview(null);
+    setParseStats(null);
 
     let parsed: unknown;
     try {
@@ -108,8 +162,9 @@ export default function AdminDrawingsPage() {
       return;
     }
 
-    const items: PreviewItem[] = [];
+    const rawItems: Omit<PreviewItem, "duplicateCodeGroup" | "duplicateDescGroup">[] = [];
     const errors: string[] = [];
+    let expandedCodes = 0;
 
     parsed.forEach((row, idx) => {
       if (typeof row !== "object" || row === null) {
@@ -117,20 +172,24 @@ export default function AdminDrawingsPage() {
         return;
       }
       const obj = row as Record<string, unknown>;
-      const fileCode = typeof obj.fileCode === "string" ? obj.fileCode.trim() : "";
+      const rawFileCode = typeof obj.fileCode === "string" ? obj.fileCode.trim() : "";
       const description =
         typeof obj.description === "string" ? obj.description.trim() : "";
-      if (!fileCode || !description) {
+      if (!rawFileCode || !description) {
         errors.push(`#${idx + 1}: brak fileCode lub description`);
         return;
       }
-      items.push({
+      const revision = typeof obj.revision === "string" ? obj.revision : null;
+      const { code: fileCode, expanded } = expandFileCode(rawFileCode, revision);
+      if (expanded) expandedCodes++;
+      rawItems.push({
         fileCode,
+        originalFileCode: expanded ? rawFileCode : null,
         description,
         discipline:
           typeof obj.discipline === "string" ? obj.discipline : null,
         phase: typeof obj.phase === "string" ? obj.phase : null,
-        revision: typeof obj.revision === "string" ? obj.revision : null,
+        revision,
         selected: true,
       });
     });
@@ -140,12 +199,63 @@ export default function AdminDrawingsPage() {
         `Pominięto ${errors.length} pozycji:\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? "\n…" : ""}`,
       );
     }
-    if (items.length === 0) {
+    if (rawItems.length === 0) {
       setParseError(
         (parseError ? parseError + "\n" : "") + "Brak poprawnych pozycji",
       );
       return;
     }
+
+    // Wykrywanie duplikatów fileCode (problem — backend dedupe zostawi tylko ostatni)
+    const codeIndices = new Map<string, number[]>();
+    rawItems.forEach((it, idx) => {
+      const arr = codeIndices.get(it.fileCode) ?? [];
+      arr.push(idx);
+      codeIndices.set(it.fileCode, arr);
+    });
+    const codeGroupId = new Map<string, number>();
+    let codeGroupCounter = 0;
+    let duplicateCodeRows = 0;
+    for (const [code, idxs] of codeIndices) {
+      if (idxs.length > 1) {
+        codeGroupId.set(code, ++codeGroupCounter);
+        duplicateCodeRows += idxs.length;
+      }
+    }
+
+    // Wykrywanie duplikatów description (informacyjnie — może być poprawne)
+    const descIndices = new Map<string, number[]>();
+    rawItems.forEach((it, idx) => {
+      const key = it.description.toLowerCase();
+      const arr = descIndices.get(key) ?? [];
+      arr.push(idx);
+      descIndices.set(key, arr);
+    });
+    const descGroupId = new Map<string, number>();
+    let descGroupCounter = 0;
+    let duplicateDescRows = 0;
+    for (const [key, idxs] of descIndices) {
+      if (idxs.length > 1) {
+        descGroupId.set(key, ++descGroupCounter);
+        duplicateDescRows += idxs.length;
+      }
+    }
+
+    const items: PreviewItem[] = rawItems.map((it) => ({
+      ...it,
+      duplicateCodeGroup: codeGroupId.get(it.fileCode) ?? null,
+      duplicateDescGroup: descGroupId.get(it.description.toLowerCase()) ?? null,
+    }));
+
+    setParseStats({
+      total: rawItems.length,
+      uniqueCodes: codeIndices.size,
+      duplicateCodeGroups: codeGroupCounter,
+      duplicateCodeRows,
+      duplicateDescGroups: descGroupCounter,
+      duplicateDescRows,
+      expandedCodes,
+    });
     setPreview(items);
   };
 
@@ -158,7 +268,15 @@ export default function AdminDrawingsPage() {
     }
     importMutation.mutate({
       projectCode: PROJECT_CODE,
-      items: selected.map(({ selected: _s, ...rest }) => rest),
+      items: selected.map(
+        ({
+          selected: _s,
+          duplicateCodeGroup: _c,
+          duplicateDescGroup: _d,
+          originalFileCode: _o,
+          ...rest
+        }) => rest,
+      ),
     });
   };
 
@@ -244,6 +362,42 @@ export default function AdminDrawingsPage() {
         </div>
       </div>
 
+      {/* Diagnostyka */}
+      {parseStats && (parseStats.duplicateCodeGroups > 0 || parseStats.duplicateDescGroups > 0 || parseStats.expandedCodes > 0) && (
+        <div className="mb-6 rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4 text-sm">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" />
+            <div className="space-y-2">
+              <div className="font-medium">Diagnostyka importu</div>
+              {parseStats.expandedCodes > 0 && (
+                <div className="text-emerald-700 dark:text-emerald-400">
+                  Rozszerzono <span className="font-medium">{parseStats.expandedCodes}</span> kodów —
+                  doczepiono numer rysunku z <code className="font-mono">revision</code> jako 10. segment
+                  (np. <code className="font-mono">..._SCH_XXX</code> + <code className="font-mono">07_01</code> →{" "}
+                  <code className="font-mono">..._SCH_XXX_07</code>). Format zgodny z 11-segmentową nazwą
+                  pliku PDF na NAS. Najedź na kod w tabeli, żeby zobaczyć oryginał.
+                </div>
+              )}
+              {parseStats.duplicateCodeGroups > 0 && (
+                <div>
+                  <span className="font-medium text-destructive">
+                    {parseStats.duplicateCodeRows} wierszy w {parseStats.duplicateCodeGroups} grupach
+                  </span>{" "}
+                  nadal ma identyczny <code className="font-mono">fileCode</code> po normalizacji — backend
+                  zostawi tylko ostatni opis (czerwone wiersze).
+                </div>
+              )}
+              {parseStats.duplicateDescGroups > 0 && (
+                <div className="text-muted-foreground">
+                  {parseStats.duplicateDescRows} wierszy w {parseStats.duplicateDescGroups} grupach ma identyczny opis przy różnych kodach (żółte wiersze).
+                  To może być poprawne (np. tablica TR1.4 rozbita na kilka rysunków) — zweryfikuj w dokumencie.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Preview */}
       {preview && (
         <div className="mb-6 rounded-lg border bg-card shadow-sm overflow-hidden">
@@ -297,6 +451,11 @@ export default function AdminDrawingsPage() {
                     className={cn(
                       "border-b hover:bg-muted/30",
                       !row.selected && "opacity-40",
+                      row.duplicateCodeGroup !== null &&
+                        "bg-destructive/5 hover:bg-destructive/10",
+                      row.duplicateCodeGroup === null &&
+                        row.duplicateDescGroup !== null &&
+                        "bg-yellow-500/5 hover:bg-yellow-500/10",
                     )}
                   >
                     <td className="px-3 py-2">
@@ -306,7 +465,21 @@ export default function AdminDrawingsPage() {
                         onChange={() => toggleOne(idx)}
                       />
                     </td>
-                    <td className="px-3 py-2 font-mono">{row.fileCode}</td>
+                    <td
+                      className="px-3 py-2 font-mono"
+                      title={
+                        row.originalFileCode
+                          ? `Oryginał z JSON: ${row.originalFileCode}`
+                          : undefined
+                      }
+                    >
+                      {row.fileCode}
+                      {row.originalFileCode && (
+                        <span className="ml-1 text-emerald-600 dark:text-emerald-400">
+                          ✱
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">{row.description}</td>
                     <td className="px-3 py-2 font-mono">{row.discipline ?? "—"}</td>
                     <td className="px-3 py-2 font-mono">{row.phase ?? "—"}</td>
