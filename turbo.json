@@ -56,6 +56,10 @@
       "cache": false,
       "interactive": false
     },
+    "seed-workers": {
+      "cache": false,
+      "interactive": false
+    },
     "studio": {
       "cache": false,
       "persistent": true

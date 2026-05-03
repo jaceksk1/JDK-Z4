@@ -54,7 +54,11 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
 
   try {
+    console.log(
+      `[upload] user=${session.user.name} folder="${folder}" file="${safeName}" size=${file.size}`,
+    );
     const result = await uploadFile(folder, safeName, buffer, file.type);
+    console.log(`[upload] OK → ${result.path}`);
     return NextResponse.json(result);
   } catch (e: any) {
     console.error("Upload error:", e);

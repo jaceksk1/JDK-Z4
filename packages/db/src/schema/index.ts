@@ -1,3 +1,4 @@
+export * from "./attendance";
 export * from "./buildings";
 export * from "./drawings";
 export * from "./floors";

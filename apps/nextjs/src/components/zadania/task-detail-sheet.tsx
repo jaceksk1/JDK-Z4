@@ -9,6 +9,8 @@ import {
   Circle,
   Clock,
   ClipboardCheck,
+  ExternalLink,
+  FileText,
   ImageIcon,
   Loader2,
   MapPin,
@@ -23,6 +25,7 @@ import { cn } from "@acme/ui";
 import { toast } from "@acme/ui/toast";
 
 import { useSession } from "~/auth/client";
+import { extractDrawingCode } from "~/components/mapa/file-browser";
 import { useTRPC } from "~/trpc/react";
 
 const STATUS_CONFIG = {
@@ -51,6 +54,25 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
     ...trpc.task.getById.queryOptions({ id: taskId ?? "" }),
     enabled: !!taskId,
   });
+
+  // Lookup opisu powiązanego pliku po kodzie rysunku
+  const linkedFileName = task?.linkedFilePath
+    ? task.linkedFilePath.split("/").pop() ?? null
+    : null;
+  const linkedFileCode = linkedFileName
+    ? extractDrawingCode(linkedFileName)
+    : null;
+  const { data: linkedDrawings } = useQuery({
+    ...trpc.drawing.lookupByCodes.queryOptions({
+      projectCode: "Z4",
+      codes: linkedFileCode ? [linkedFileCode] : [],
+    }),
+    enabled: !!linkedFileCode,
+    staleTime: 5 * 60_000,
+  });
+  const linkedFileDescription =
+    linkedDrawings?.find((d) => d.fileCode === linkedFileCode)?.description ??
+    null;
 
   const submitMutation = useMutation(
     trpc.task.submit.mutationOptions({
@@ -143,7 +165,7 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
           .slice(0, 30);
         const formData = new FormData();
         formData.append("file", photoFile);
-        formData.append("folder", `zadania/${userName}_${taskSlug}`);
+        formData.append("folder", `Zadania/${userName}_${taskSlug}`);
 
         const uploadRes = await fetch("/api/files", {
           method: "POST",
@@ -285,6 +307,58 @@ export function TaskDetailSheet({ taskId, onClose }: TaskDetailSheetProps) {
                   </span>
                 )}
               </section>
+
+              {/* Materiały od managera — zdjęcie i/lub powiązany plik */}
+              {(task.creationPhotoPath || task.linkedFilePath) && (
+                <section className="space-y-3 rounded-sm border bg-muted/20 p-4">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Materiały
+                  </h3>
+                  {task.creationPhotoPath && (
+                    <a
+                      href={`/api/files?path=${encodeURIComponent(task.creationPhotoPath)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/files?path=${encodeURIComponent(task.creationPhotoPath)}`}
+                        alt="Zdjęcie zadania"
+                        className="w-full rounded-sm border object-cover max-h-64"
+                        loading="lazy"
+                      />
+                    </a>
+                  )}
+                  {task.linkedFilePath && linkedFileName && (
+                    <a
+                      href={`/api/files?path=${encodeURIComponent(task.linkedFilePath)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-start gap-2 rounded-sm border bg-card p-2.5 transition-colors hover:bg-accent"
+                    >
+                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="truncate text-sm font-medium"
+                          title={linkedFileName}
+                        >
+                          {linkedFileName}
+                        </p>
+                        {linkedFileDescription && (
+                          <p
+                            className="truncate text-[11px] text-muted-foreground"
+                            title={linkedFileDescription}
+                          >
+                            {linkedFileDescription}
+                          </p>
+                        )}
+                      </div>
+                      <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    </a>
+                  )}
+                </section>
+              )}
 
               {/* Zgłoszenie wykonania — wyświetlone gdy submitted lub done */}
               {task.completionNote && (

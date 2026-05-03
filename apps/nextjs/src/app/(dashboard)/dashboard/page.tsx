@@ -18,6 +18,7 @@ import {
 
 import { cn } from "@acme/ui";
 
+import { AttendanceWidget } from "~/components/attendance/attendance-widget";
 import { useTRPC } from "~/trpc/react";
 
 export default function DashboardPage() {
@@ -57,6 +58,11 @@ export default function DashboardPage() {
           Zaspa IV Gdańsk
         </p>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+      </div>
+
+      {/* Widget obecności — zawsze widoczny dla każdego zalogowanego */}
+      <div className="mb-6">
+        <AttendanceWidget />
       </div>
 
       {/* Powiadomienia */}

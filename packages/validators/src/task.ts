@@ -9,6 +9,10 @@ export const taskCreateInputSchema = z.object({
   description: z.string().max(2000).optional(),
   assignedToId: z.string().optional(),
   dueDate: z.coerce.date().optional(),
+  /** Ścieżka NAS do zdjęcia dołączonego przez managera. */
+  creationPhotoPath: z.string().max(500).optional(),
+  /** Ścieżka NAS do powiązanego pliku z modułu Projekt. */
+  linkedFilePath: z.string().max(500).optional(),
 });
 
 export const taskUpdateStatusInputSchema = z.object({
@@ -23,6 +27,8 @@ export const taskUpdateInputSchema = z.object({
   unitId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().nullable().optional(),
   dueDate: z.coerce.date().nullable().optional(),
+  creationPhotoPath: z.string().max(500).nullable().optional(),
+  linkedFilePath: z.string().max(500).nullable().optional(),
 });
 
 export const taskGetByIdInputSchema = z.object({

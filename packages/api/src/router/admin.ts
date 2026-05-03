@@ -116,10 +116,14 @@ export const adminRouter = {
         });
       }
 
-      // Ustaw rolę i firmę (admin plugin nie jest używany bezpośrednio — aktualizujemy ręcznie)
+      // Ustaw rolę, firmę i wymuszenie zmiany hasła
       await ctx.db
         .update(user)
-        .set({ role: input.role, company: input.company ?? null })
+        .set({
+          role: input.role,
+          company: input.company ?? null,
+          mustChangePassword: true,
+        })
         .where(eq(user.id, result.user.id));
 
       // Sprawdź że wszystkie wybrane grupy istnieją
@@ -223,6 +227,11 @@ export const adminRouter = {
         headers: ctx.headers,
         asResponse: false,
       });
+      // Wymuszamy zmianę przy następnym logowaniu (admin nie zna nowego hasła ze 100% pewnością)
+      await ctx.db
+        .update(user)
+        .set({ mustChangePassword: true })
+        .where(eq(user.id, input.userId));
       return { success: true };
     }),
   /** Usunięcie użytkownika */

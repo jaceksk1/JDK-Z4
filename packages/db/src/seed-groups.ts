@@ -9,7 +9,7 @@ import { eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "./client";
 import { groupModules, groups, user, userGroups } from "./schema";
 
-const MODULE_KEYS = ["mapa", "pliki", "zadania", "qa"] as const;
+const MODULE_KEYS = ["mapa", "pliki", "zadania", "qa", "obecnosc"] as const;
 
 interface SeedGroup {
   name: string;

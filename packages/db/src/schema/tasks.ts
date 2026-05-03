@@ -33,6 +33,10 @@ export const tasks = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     completionNote: t.text(),
     completionPhotoPath: t.text(),
+    /** Zdjęcie dołączone przez managera przy tworzeniu zadania (1 plik, NAS path). */
+    creationPhotoPath: t.text(),
+    /** Powiązany plik z modułu Projekt (NAS path do PDF/innego dokumentu). */
+    linkedFilePath: t.text(),
     submittedAt: t.timestamp({ mode: "date", withTimezone: true }),
     dueDate: t.timestamp({ mode: "date", withTimezone: true }),
     createdAt: t

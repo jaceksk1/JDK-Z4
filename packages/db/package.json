@@ -29,6 +29,7 @@
     "seed-admin": "pnpm with-env tsx src/seed-admin.ts",
     "seed-cards": "pnpm with-env tsx src/seed-cards.ts",
     "seed-groups": "pnpm with-env tsx src/seed-groups.ts",
+    "seed-workers": "pnpm with-env tsx src/seed-workers.ts",
     "studio": "pnpm with-env drizzle-kit studio",
     "typecheck": "tsc --noEmit --emitDeclarationOnly false",
     "with-env": "dotenv -e ../../.env --"

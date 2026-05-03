@@ -37,7 +37,7 @@ async function getAuth(): Promise<{ sid: string; token: string }> {
   return { sid: cachedSid!, token: cachedToken! };
 }
 
-/** Create a single folder (parent must exist) */
+/** Create a single folder (parent must exist). Idempotentne — code 1100/error 408 = już istnieje. */
 async function createOneFolder(parentPath: string, name: string): Promise<void> {
   const { sid, token } = await getAuth();
   const cfg = getConfig();
@@ -49,16 +49,30 @@ async function createOneFolder(parentPath: string, name: string): Promise<void> 
   });
   const data = await res.json();
 
-  if (!data.success && data.error?.code !== 109) {
-    console.warn(`Synology createFolder ${parentPath}/${name}:`, data);
-  }
+  if (data.success) return;
+
+  // Wyciągamy szczegółowy kod (FileStation pakuje go w errors[0].code)
+  const detailCode: number | undefined = data.error?.errors?.[0]?.code;
+
+  // Akceptujemy: 109 (top-level "already exists"), 1100 + sub-error 408 (już istnieje
+  // przy CreateFolder), 1100 + 414 (file already exists)
+  const alreadyExists =
+    data.error?.code === 109 ||
+    (data.error?.code === 1100 && (detailCode === 408 || detailCode === 414));
+
+  if (alreadyExists) return;
+
+  throw new Error(
+    `Synology createFolder failed for ${parentPath}/${name}: code=${data.error?.code} detail=${detailCode ?? "n/a"}`,
+  );
 }
 
-/** Ensure full subfolder path exists */
+/** Ensure full subfolder path exists. Tolerantne na trailing/leading slashe w basePath i subPath. */
 export async function ensureFolder(subPath: string): Promise<string> {
   const cfg = getConfig();
   const parts = subPath.split("/").filter(Boolean);
-  let current = cfg.basePath;
+  // Zdejmij trailing slash z basePath żeby nie produkować "//"
+  let current = cfg.basePath.replace(/\/+$/, "");
 
   for (const part of parts) {
     await createOneFolder(current, part);
@@ -113,7 +127,7 @@ export async function uploadFile(
 
   if (!data.success) {
     throw new Error(
-      `Synology upload failed: code ${data.error?.code ?? "unknown"}`,
+      `Synology upload failed: code ${data.error?.code ?? "unknown"} for path ${fullFolderPath}/${fileName}`,
     );
   }
 

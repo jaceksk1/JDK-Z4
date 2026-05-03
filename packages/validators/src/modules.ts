@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 
 /** Klucze modułów kontrolowanych przez grupy uprawnień. Single source of truth. */
-export const MODULE_KEYS = ["mapa", "pliki", "zadania", "qa"] as const;
+export const MODULE_KEYS = ["mapa", "pliki", "zadania", "qa", "obecnosc"] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -20,4 +20,5 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: "pliki", label: "Pliki", hint: "Przeglądarka plików projektowych z NAS" },
   { key: "zadania", label: "Zadania", hint: "Zgłoszenia i ich obsługa" },
   { key: "qa", label: "Q&A", hint: "Pytania i odpowiedzi techniczne" },
+  { key: "obecnosc", label: "Obecność", hint: "Lista obecności i raporty miesięczne" },
 ] as const;

@@ -16,7 +16,7 @@ import { useTRPC } from "~/trpc/react";
  * dopóki nie wiemy.
  */
 export function useRequireModule(
-  moduleKey: "mapa" | "pliki" | "zadania" | "qa",
+  moduleKey: "mapa" | "pliki" | "zadania" | "qa" | "obecnosc",
 ): { isLoading: boolean; hasAccess: boolean } {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = useSession();
@@ -24,7 +24,8 @@ export function useRequireModule(
   const { data: myModules, isPending: modulesPending } = useQuery({
     ...trpc.group.myModules.queryOptions(),
     enabled: !!session,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const isLoading = sessionPending || (!!session && modulesPending);

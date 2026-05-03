@@ -133,11 +133,31 @@ function matchesTopic(desc: string, topic: TopicFilter): boolean {
   return topic.patterns.some((p) => lower.includes(p));
 }
 
-export function FileBrowser() {
+interface FileBrowserProps {
+  /**
+   * Tryb selektora — gdy podany, kliknięcie pliku zamiast otwierać go w
+   * nowej karcie wywoła onSelect z metadanymi. Foldery nadal nawigują.
+   */
+  onSelect?: (params: {
+    path: string;
+    name: string;
+    description: string | null;
+  }) => void;
+  /** Zewnętrznie sterowana ścieżka (override URL routing). */
+  pathOverride?: string;
+  /** Callback nawigacji folderu — gdy podany, FileBrowser nie ruszy URL. */
+  onPathChange?: (path: string) => void;
+}
+
+export function FileBrowser({
+  onSelect,
+  pathOverride,
+  onPathChange,
+}: FileBrowserProps = {}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const trpc = useTRPC();
-  const path = searchParams.get("filePath") ?? "";
+  const path = pathOverride ?? searchParams.get("filePath") ?? "";
 
   const [search, setSearch] = useState("");
   const [discipline, setDiscipline] = useState<string>(FILTER_ALL);
@@ -266,10 +286,14 @@ export function FileBrowser() {
   }, [data]);
 
   const navigate = (newPath: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (newPath) params.set("filePath", newPath);
-    else params.delete("filePath");
-    router.push(`/mapa?${params.toString()}`);
+    if (onPathChange) {
+      onPathChange(newPath);
+    } else {
+      const params = new URLSearchParams(searchParams);
+      if (newPath) params.set("filePath", newPath);
+      else params.delete("filePath");
+      router.push(`/mapa?${params.toString()}`);
+    }
     setSearch("");
     setDiscipline(FILTER_ALL);
     setActiveTags([]);
@@ -441,7 +465,17 @@ export function FileBrowser() {
                       showCode={showCodes}
                       highlight={search.trim()}
                       onFolderClick={() => navigate(entry.path)}
-                      onFileClick={() => openFile(entry.path)}
+                      onFileClick={() => {
+                        if (onSelect) {
+                          onSelect({
+                            path: entry.path,
+                            name: entry.name,
+                            description,
+                          });
+                        } else {
+                          openFile(entry.path);
+                        }
+                      }}
                     />
                   );
                 })}

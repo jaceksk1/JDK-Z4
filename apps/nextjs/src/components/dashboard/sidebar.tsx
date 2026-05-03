@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CalendarCheck,
   ChevronRight,
   FileSearch,
   FolderOpen,
@@ -44,7 +45,7 @@ interface NavItem {
   showUnread?: boolean;
   adminOnly?: boolean;
   /** Klucz modułu z @acme/validators MODULE_KEYS — kontrolowany przez grupy. */
-  moduleKey?: "mapa" | "pliki" | "zadania" | "qa";
+  moduleKey?: "mapa" | "pliki" | "zadania" | "qa" | "obecnosc";
   children?: NavItem[];
   /** Aktywny tylko gdy searchParams[key] === value (null = brak parametru). */
   matchSearch?: { key: string; value: string | null };
@@ -74,6 +75,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: "/zadania", label: "Zadania", icon: ListChecks, moduleKey: "zadania" },
   { href: "/qa", label: "Q&A", icon: MessageSquare, showUnread: true, moduleKey: "qa" },
+  { href: "/obecnosc", label: "Obecność", icon: CalendarCheck, moduleKey: "obecnosc" },
   { href: "/admin/users", label: "Użytkownicy", icon: Users, adminOnly: true },
   { href: "/admin/groups", label: "Grupy", icon: ShieldCheck, adminOnly: true },
   { href: "/admin/drawings", label: "Indeks rysunków", icon: FileSearch, adminOnly: true },
@@ -402,7 +404,9 @@ export function Sidebar() {
   const { data: myModules } = useQuery({
     ...trpc.group.myModules.queryOptions(),
     enabled: !!session,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
   });
 
   const unreadCount = dashData?.unreadCount ?? 0;

@@ -14,6 +14,8 @@ export const user = pgTable("user", (t) => ({
   // custom fields
   company: t.text(),
   lastSeenQaAt: t.timestamp({ mode: "date", withTimezone: true }),
+  /** Wymuszenie zmiany hasła przy pierwszym logowaniu (po seedzie / reset hasła). */
+  mustChangePassword: t.boolean().default(false).notNull(),
   // admin plugin
   role: t.text().default("worker"),
   banned: t.boolean(),

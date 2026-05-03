@@ -86,6 +86,8 @@ export const taskRouter = {
           assignedToId: input.assignedToId ?? null,
           createdById: ctx.session.user.id,
           dueDate: input.dueDate ?? null,
+          creationPhotoPath: input.creationPhotoPath ?? null,
+          linkedFilePath: input.linkedFilePath ?? null,
         })
         .returning();
 
@@ -178,6 +180,10 @@ export const taskRouter = {
       if (input.unitId !== undefined) set.unitId = input.unitId;
       if (input.assignedToId !== undefined) set.assignedToId = input.assignedToId;
       if (input.dueDate !== undefined) set.dueDate = input.dueDate;
+      if (input.creationPhotoPath !== undefined)
+        set.creationPhotoPath = input.creationPhotoPath;
+      if (input.linkedFilePath !== undefined)
+        set.linkedFilePath = input.linkedFilePath;
 
       if (Object.keys(set).length === 0) return task;
 
@@ -219,6 +225,8 @@ export const taskRouter = {
           status: tasks.status,
           completionNote: tasks.completionNote,
           completionPhotoPath: tasks.completionPhotoPath,
+          creationPhotoPath: tasks.creationPhotoPath,
+          linkedFilePath: tasks.linkedFilePath,
           submittedAt: tasks.submittedAt,
           dueDate: tasks.dueDate,
           createdAt: tasks.createdAt,
