@@ -126,24 +126,33 @@ JDK Z4/
 
 **Do zrobienia (post-MVP):**
 - [ ] Test PWA install na 2 telefonach (Android + iOS)
-- [ ] Zmiana hasła `admin/admin` na prod (publiczna domena)
+- [x] ~~Zmiana hasła `admin/admin` na prod~~ — zrobione ręcznie 04.05
 - [ ] Rotacja sekretów wklejonych w sesji 28.04 (Supabase password, AUTH_SECRET, Synology password)
 - [ ] (opcjonalne) Whitelist podfolderów w FileBrowser zamiast pełnego `/JDK/JDK-Z4/`
 - [ ] Synology Drive Client: dodać `Zadania/*` do filtrów synchronizacji (jeśli `/JDK/JDK-Z4/` jest zsynchronizowane lokalnie)
+
+**Deploy 04.05.2026 (po sesji obecność + zadania-fix + mustChangePassword):**
+- Commit `5894e1f` → push → Vercel build Ready w 50s
+- `cd packages/db && pnpm dotenv -e ../../.env.production.local -- drizzle-kit push --force` → schema (attendance, mustChangePassword, creationPhotoPath, linkedFilePath) na Supabase prod
+- `pnpm dotenv -e ../../.env.production.local -- tsx src/seed-workers.ts` → 14 nowych + 1 update (Michał Rogalewski był wcześniej)
+- `pnpm dotenv -e ../../.env.production.local -- tsx src/reset-passwords.ts` → wszystkim 15 ustawione `jdk2026` + `mustChangePassword=true`
+- 15 pracowników JDK gotowi do pierwszego logowania na `app.jdkasprzak.pl`
 
 ---
 
 ## AUTH — JAK DZIAŁA
 
 **Logowanie:** username (np. `jan.kowalski`) + hasło  
-**Konto startowe:** `admin` / `admin` (utworzone przez `pnpm db:seed-admin`) — **⚠️ ZMIENIĆ na prod, domena publiczna**  
-**Tworzenie userów:** Panel admina na `/admin/users` — admin może dodawać, edytować, usuwać, resetować hasła. **WYMAGANE: ≥1 grupa uprawnień przy tworzeniu** (multiselect)  
+**Konto admin:** `admin` (hasło zmienione ręcznie na prod 04.05.2026)  
+**Tworzenie userów:** Panel admina na `/admin/users` lub bulk seed `pnpm db:seed-workers` (czyta `dane/pracownicy.txt` — gitignored). **WYMAGANE: ≥1 grupa uprawnień przy tworzeniu** (multiselect)  
 **Role (operacyjne):** `admin` | `manager` | `worker` — kontrolują CO user może robić (tworzyć zadania, zamykać Q&A, panel admin)  
 **Grupy (widoczność):** kontrolują KTÓRE moduły user widzi w sidebarze. Role i grupy to ortogonalne wymiary.  
-**Pola użytkownika:** name, username, email (auto), role, company (firma), lastSeenQaAt (powiadomienia)  
+**Pola użytkownika:** name, username, email (auto), role, company (firma), lastSeenQaAt (powiadomienia), `mustChangePassword`  
+**Wymuszenie zmiany hasła:** `mustChangePassword: boolean` ustawiane na `true` przy seedzie / `admin.createUser` / `admin.resetPassword`. `MustChangePasswordGuard` w dashboard layout robi `router.replace("/zmiana-hasla")`. Po zmianie flaga = false. Mutation `auth.changeMyPassword` (`revokeOtherSessions: false` żeby user został zalogowany). Query `auth.myMustChangePassword` jako `publicProcedure` (bez sesji → false, eliminuje UNAUTHORIZED przy hot reload).  
 **Username auto-gen:** "Jan Kowalski" → `jan.kowalski` (polskie znaki → ASCII)  
 **Wewnętrzny email:** `{username}@jdkz4.local` (wymagany przez Better Auth, ale niewidoczny dla usera)  
-**minPasswordLength:** 4 znaki (ustawione w `packages/auth/src/index.ts` + `seed-admin.ts`)  
+**minPasswordLength:** 4 znaki w Better Auth config; **`auth.changeMyPassword` wymaga min. 6** (Zod walidacja w validatorze)  
+**Hasło startowe pracowników:** `jdk2026` (po seed-workers/reset-passwords) — wymuszona zmiana przy 1. logowaniu  
 **Wylogowanie:** Server Action w `apps/nextjs/src/auth/actions.ts` (nie client `signOut` — nie działa)  
 **trustedOrigins:** localhost:3000, 3001, 3002, `*.devtunnels.ms` (dev tunnels z VS Code)
 
@@ -199,9 +208,12 @@ type UnitType =
 - `~/components/zadania/task-detail-sheet.tsx` — szczegóły z zgłoszeniem wykonania + upload zdjęcia
 - `~/components/admin/edit-user-sheet.tsx` — edycja/usuwanie usera + reset hasła + multiselect grup
 - `~/components/admin/group-multi-select.tsx` — reusable multi-checkbox lista grup z DB
-- `~/components/mapa/file-browser.tsx` — przeglądarka plików NAS z search/filtry/kategorie
+- `~/components/mapa/file-browser.tsx` — przeglądarka plików NAS z search/filtry/kategorie. **Tryb selektora**: propy `onSelect`, `pathOverride`, `onPathChange` — bez nich URL routing dla `/mapa?tab=files`
+- `~/components/zadania/file-picker-dialog.tsx` — modal pełnoekranowy z FileBrowserem w trybie selektora; lokalny state ścieżki
+- `~/components/attendance/attendance-widget.tsx` — widget na dashbordzie, 4 stany (blokada T-1, „Jestem dziś", w toku, zamknięte). Czas wpisywany jako HH:MM PL, godziny liczone auto z różnicy
+- `~/components/dashboard/must-change-password-guard.tsx` — client guard renderowany w `(dashboard)/layout.tsx`, redirect.replace na `/zmiana-hasla` gdy `auth.myMustChangePassword` zwróci `mustChange=true`
 - `~/hooks/use-require-module.ts` — client-side guard `useRequireModule(moduleKey)` — redirect na dashboard przy braku uprawnień
-- `~/lib/synology.ts` — klient Synology FileStation API (server-only) — login, upload, download, listFolder, ensureFolder
+- `~/lib/synology.ts` — klient Synology FileStation API (server-only) — login, upload, download, listFolder, ensureFolder (z `combineDateAndTimePl` dla obecności w `packages/api/src/router/attendance.ts`)
 - `~/components/qa/question-detail-sheet.tsx` — szczegóły z odpowiadaniem + usuwanie problemów z etapów
 
 ---
@@ -236,6 +248,10 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 [✅] Indeks rysunków → tabela drawings + paste-JSON z Claude.ai w /admin/drawings; FileBrowser pokazuje opisy obok nazw PDF
 [✅] Grupy uprawnień → MODULE_KEYS w validatorach, sidebar/guards filtrują, /admin/groups CRUD + multi-membership
 [✅] Fix indeksu rysunków → 10 segmentów (włącza numer rysunku) + expandFileCode dopisuje numer z revision; kolumna „Rew." w file-browser; panel diagnostyki duplikatów w /admin/drawings
+[✅] Moduł Obecność → schema attendance, godziny zegarowe HH:MM PL (DST-safe), reguła T-1, strona /obecnosc 3 taby (Dziś/Miesiąc/Raport CSV), widget na dashbordzie zawsze widoczny
+[✅] Zadania: zdjęcie + linkedFile → creationPhotoPath + linkedFilePath; FilePickerDialog (modal); FileBrowser tryb selektora; sekcja Materiały w detail sheet
+[✅] Synology fix: ensureFolder zdejmuje trailing slash + createOneFolder rzuca błąd; Drive sync conflict zdiagnozowany (Zadania_ADMIN_<data>_Conflict)
+[✅] Wymuszenie zmiany hasła → user.mustChangePassword + /zmiana-hasla + MustChangePasswordGuard; seed-workers + reset-passwords skrypty
 ```
 
 ---
@@ -256,9 +272,12 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 - `pnpm db:seed` — jednostki (idempotentny, skip jeśli projekt Z4 istnieje)
 - `pnpm db:seed-admin` — konto admin (idempotentny, skip jeśli admin istnieje)
 - `pnpm db:seed-cards` — przypisuje cardCode mieszkaniom i LU (klatka.piętro.lokalNaPiętrze dla mieszkań, designator dla LU; idempotentny)
-- `pnpm db:seed-groups` — domyślne grupy uprawnień + przypisanie orphan userów (idempotentny)
+- `pnpm db:seed-groups` — domyślne grupy uprawnień + przypisanie orphan userów (idempotentny). MODULE_KEYS w skrypcie hardcoded — pamiętać żeby aktualizować równolegle z `@acme/validators/modules.ts`
+- `pnpm db:seed-workers` — czyta `dane/pracownicy.txt` (gitignored, `Imię Nazwisko | firma | rola | grupa`), tworzy/aktualizuje grupę „JDK" + 15 userów. Idempotentny: nowi z hasłem `jdk2026` + `mustChangePassword=true`; istniejący tylko firma/rola/grupy bez resetu hasła
+- `packages/db/src/reset-passwords.ts` — jednorazowy skrypt: wszystkim oprócz admina ustawia `jdk2026` + `mustChangePassword=true`. Używa `auth.$context.password.hash()` z Better Auth + bezpośredni update tabeli `account.password` (bypassuje session admin)
+- `packages/db/src/force-password-reset.ts` — utility: tylko ustawia flagę `mustChangePassword=true` bez ruszania haseł
 - `pnpm db:fix-units` — czyści błędne jednostki (artefakty DWG: `A1.2.24`, `A1.2.30`, `B2.U.28`, `B2.U.29`)
-- Wszystkie używają `tsx` (nie `ts-node`)
+- Wszystkie używają `tsx` (nie `ts-node`); ESM wymaga `import.meta.url + fileURLToPath` zamiast `__dirname`
 - Parser seed używa wzorca `TM [AB][12].X.Y` jako source of truth — NIE łapie designatorów bez prefiksu TM (często błędne etykiety projektanta)
 - LU generowane z whitelisty w `seed.ts` (VALID_LU_NUMBERS), nie z DWG
 - `packages/db` ma własną kopię `better-auth` jako devDep żeby uniknąć cyklu zależności z `@acme/auth`
@@ -291,12 +310,15 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 **Synology NAS (DS218j, DSM 7.1):**
 - Adres: `http://193.163.149.230:5000` (port forwarding na routerze)
 - Konto API: `admin` (wbudowane konto `jdkapp` nie miało uprawnień do API mimo grupy administrators)
-- Env: `SYNOLOGY_URL`, `SYNOLOGY_USER`, `SYNOLOGY_PASS`, `SYNOLOGY_BASE_PATH=/JDK/JDK-Z4/Zdjecia`
+- Env: `SYNOLOGY_URL`, `SYNOLOGY_USER`, `SYNOLOGY_PASS`, `SYNOLOGY_BASE_PATH` (uwaga: na localhoście od 03.05 ustawione na `/JDK/JDK-Z4/`, nie `/Zdjecia` — `ensureFolder` musi zdejmować trailing slash)
 - **DSM 7 Upload quirk (KRYTYCZNE):** `_sid` NIE MOŻE być w multipart form body razem z plikiem — musi być w URL params. Bez tego error 119.
 - Upload wymaga: `enable_syno_token=yes` przy loginie + header `X-SYNO-TOKEN` na operacjach zapisu
 - Auth endpoint w DSM 7: `entry.cgi` (nie `auth.cgi` jak w DSM 6, choć `auth.cgi` też działa)
 - Polskie znaki w ścieżkach folderów powodują problemy — używaj ASCII (`Zdjecia` nie `Zdjęcia`)
 - **Wielkość liter się liczy** — foldery `BUDYNEK A`/`BUDYNEK B` są wielkimi literami (nie `Budynek A`), Synology zwraca 404 przy niezgodności
+- **`ensureFolder` zdejmuje trailing slash** z `basePath` (`replace(/\/+$/, "")`) — bez tego `//` w ścieżce wywala 1100. **`createOneFolder` rzuca błąd** zamiast `console.warn` przy nieobsłużonych kodach; akceptuje 109 (top-level „już istnieje") oraz 1100+sub-error 408/414 (przy CreateFolder oznacza „już istnieje", nie „rodzic nie istnieje")
+- **Synology Drive sync conflict** (04.05.2026): jeśli `/JDK/JDK-Z4/` jest zsynchronizowane lokalnie przez Synology Drive Client, tworzenie folderu przez aplikację może wywołać conflict resolution → folder dostaje suffix `_<USER>_<data>_Conflict` (np. `Zadania_ADMIN_May-04-...-2026_Conflict`). Fix: dodać `Zadania/*` do filtrów Drive Client, ALBO ustawić `SYNOLOGY_BASE_PATH` na share niezsynchronizowany. Tłumaczenie: aplikacja przez FileStation tworzy folder na NAS, lokalny Drive próbuje go zassać i wykrywa konflikt z lokalnym stanem
+- Logging w `/api/files` route: `console.log("[upload] user=... folder=... file=... size=...")` przy każdym uploadzie + `[upload] OK → path` po sukcesie (dla debugu)
 - Klient: `apps/nextjs/src/lib/synology.ts`, API route: `apps/nextjs/src/app/api/files/route.ts`
 
 **Deploy Vercel (sesja 28.04.2026, 5 pułapek):**
@@ -320,11 +342,34 @@ Na początku każdej nowej sesji wklejam ten plik i dodaję:
 
 **Grupy uprawnień (sesja 28.04.2026):**
 - **Schema:** `groups` (name unique), `group_modules` (M:N moduli), `user_groups` (M:N members) — admin (`user.role === 'admin'`) bypassuje wszystkie filtry, widzi każdy moduł
-- **MODULE_KEYS:** `['mapa','pliki','zadania','qa']` w `@acme/validators/modules.ts` — single source of truth, używane w sidebarze, panelu grup, walidatorze grup
+- **MODULE_KEYS:** `['mapa','pliki','zadania','qa','obecnosc']` w `@acme/validators/modules.ts` — single source of truth, używane w sidebarze, panelu grup, walidatorze grup, `useRequireModule`. Seed-groups ma własną hardcoded kopię — pamiętać o synchronizacji.
 - **NavItem.moduleKey** — sidebar ukrywa item jeśli user nie ma modułu w `effectiveModules` (z `group.myModules` query)
-- **useRequireModule()** — client-side guard hook w `/qa`, `/zadania`, `/mapa` (mapa: warunkowo `mapa` lub `pliki` wg taba); redirect na `/dashboard` przy braku uprawnień
+- **useRequireModule()** — client-side guard hook w `/qa`, `/zadania`, `/mapa`, `/obecnosc` (mapa: warunkowo `mapa` lub `pliki` wg taba); redirect na `/dashboard` przy braku uprawnień
+- **`group.myModules` cache:** `staleTime: 30s` + `refetchOnWindowFocus: true` (sidebar dodatkowo `refetchInterval: 60s`). Wcześniej było 5min — zmiana grup w panelu admin propagowała się 5min lub po wylogowaniu. Teraz w 30-60s.
 - **createUser/updateUser** wymaga `groupIds.min(1)` — user nie może istnieć bez grupy. Seed-groups idempotentny: tworzy „Wszystkie moduły" + „Tylko Q&A", przypisuje orphan userów do „Wszystkie moduły".
+- **Grupa „JDK"** (utworzona przez seed-workers, moduły: `mapa, zadania, qa`) — domyślna dla wszystkich 15 pracowników JDK Elektro
 - **Page guard pattern dla client component:** ze `'use client'` nie da się server-side guarda — `useRequireModule()` ustawia `router.replace("/dashboard")` w `useEffect`, page returns `null` dopóki `hasAccess === false`
+- **Widget Obecność** (`/components/attendance/attendance-widget.tsx`) — **świadomie poza systemem grup**, zawsze widoczny dla każdego zalogowanego (decyzja: każdy worker MUSI móc się odhaczyć; sam moduł `/obecnosc` z raportami jest gated)
+
+**Obecność (sesja 03–04.05.2026):**
+- Schema `attendance`: unique(userId, projectId, date) + `date` jako `t.date({mode: "string"})` (YYYY-MM-DD lokalna PL)
+- **Strefa czasowa `Europe/Warsaw`** wszędzie: `Intl.DateTimeFormat("en-CA", {timeZone: "Europe/Warsaw"})` zwraca YYYY-MM-DD lokalne
+- **Helper `combineDateAndTimePl(date, time)`** w `packages/api/src/router/attendance.ts` — buduje absolutny Date z `"2026-05-04" + "07:30"` interpretowanym jako PL. Działa wokół DST przez `Intl.DateTimeFormat.formatToParts` + offset reverse-engineering
+- **`hoursWorked: numeric(4,2)`** liczone automatycznie z różnicy `checkedOutAt - checkedInAt` (`Math.round(ms/3600/1000 * 100) / 100` — 2 cyfry po przecinku). Worker NIE wpisuje godzin sumarycznie, tylko HH:MM zegarowe (in/out)
+- **Reguła T-1**: `myToday.yesterdayBlocking = (yesterdayRecord && yesterdayRecord.checkedOutAt === null)` — worker musi uzupełnić wczoraj LUB anulować rekord (`attendance.cancel` mutation usuwa wpis). Worker edytuje tylko T i T-1; manager/admin dowolnie. `assertWorkerCanEditDate()` waliduje
+- **Mutations:** `checkIn`, `checkOut` (auto stempluje czas), `setTimes` (HH:MM in/out, override + auto-recalc hoursWorked), `setNote`, `cancel`, manager: `listForDate`, `monthlyReport`, `exportMonth`
+- **CSV format:** BOM UTF-8 (`﻿`), separator `;`, CRLF — Excel-friendly. Kolumny: `Pracownik;Firma;Data;Godziny;Notatka`
+- **UI**: strona `/obecnosc` 3 taby (Dziś/Miesiąc/Raport), inline edycja czasów per user/dzień (HoursCell → TimeCell). Widget na dashbordzie zawsze widoczny
+- **Better Auth `changePassword`** używa `revokeOtherSessions: false` — `true` wylogowuje TEŻ bieżącą sesję (mimo nazwy „other") i potem wszystkie protected query lecą jako UNAUTHORIZED
+- **`auth.myMustChangePassword`** jako **publicProcedure** (a nie protected) — bez sesji zwraca `{mustChange: false}`. Bez tego guard sypie UNAUTHORIZED przy hot reload / wylogowaniu
+
+**Zadania — zdjęcie + linkedFile (sesja 04.05.2026):**
+- Schema `tasks` rozszerzona o `creationPhotoPath: text` (zdjęcie managera) + `linkedFilePath: text` (1 plik z modułu Projekt)
+- **FileBrowser tryb selektora** (back-compat zachowane): propy `onSelect / pathOverride / onPathChange`. Bez nich URL routing dla `/mapa?tab=files`. Z nimi — modal-friendly (FilePickerDialog używa lokalnego state)
+- **TaskForm**: pole zdjęcia (jak w worker submit) + button „Wybierz plik z projektu" → `FilePickerDialog` → wybrany plik z opisem (lookup w `drawing` po `extractDrawingCode`)
+- **TaskDetailSheet** sekcja „Materiały": zdjęcie klikalne (full-size) + linked file z opisem rysunku (klikalny link → otwiera w nowej karcie przez `/api/files?path=`)
+- Folder NAS: `Zadania/{slug}-creation/` (manager) + `Zadania/{userName}_{taskSlug}/` (worker, format z PROMPT-0)
+- Ścieżka pełna z `SYNOLOGY_BASE_PATH=/JDK/JDK-Z4/`: `/JDK/JDK-Z4/Zadania/...` (UPPERCASE „Zadania")
 
 **Karty mieszkań i LU (PDF):**
 - Pole `cardCode: text` nullable na `units` — dla apartment i commercial
